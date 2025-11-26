@@ -1,0 +1,97 @@
+
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="theme-color" content="#09090b" />
+    <title>NovelCraft AI</title>
+    <link rel="manifest" href="/manifest.json">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700&family=Noto+Serif+KR:wght@400;700&display=swap" rel="stylesheet">
+    <script>
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            colors: {
+              zinc: {
+                850: '#1f1f22',
+                900: '#18181b',
+                950: '#09090b',
+              }
+            },
+            fontFamily: {
+              sans: ['"Noto Sans KR"', 'sans-serif'],
+              serif: ['"Noto Serif KR"', 'serif'],
+            }
+          }
+        }
+      }
+    </script>
+    <style>
+      body {
+        background-color: #09090b;
+        color: #f4f4f5;
+        overscroll-behavior: none; /* Prevent pull-to-refresh on mobile */
+      }
+      /* Custom Scrollbar */
+      ::-webkit-scrollbar {
+        width: 8px;
+      }
+      ::-webkit-scrollbar-track {
+        background: #09090b; 
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #27272a; 
+        border-radius: 4px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: #3f3f46; 
+      }
+      
+      /* Editor specific styles */
+      [contenteditable]:empty:before {
+        content: attr(placeholder);
+        color: #52525b;
+        pointer-events: none;
+        display: block; /* For Firefox */
+      }
+      
+      /* Interactive Diff Styles */
+      .diff-interactive {
+        cursor: pointer;
+        border-radius: 2px;
+        transition: color 0.2s;
+        padding: 0 1px;
+        font-weight: bold; /* Make changes stand out slightly more without background */
+      }
+      .diff-interactive[data-state="modified"] {
+        color: #60a5fa; /* Blue-400 */
+        background-color: transparent; /* No background */
+      }
+      .diff-interactive[data-state="original"] {
+        color: #f87171; /* Red-400 */
+        background-color: transparent; /* No background */
+        /* Strikethrough removed as requested */
+        text-decoration: none;
+      }
+    </style>
+<script type="importmap">
+{
+  "imports": {
+    "uuid": "https://aistudiocdn.com/uuid@^13.0.0",
+    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.555.0",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.30.0",
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "react": "https://aistudiocdn.com/react@^19.2.0",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/"
+  }
+}
+</script>
+</head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>
