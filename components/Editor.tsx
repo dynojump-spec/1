@@ -1,6 +1,4 @@
 
-
-
 import React, { useRef, useEffect, useState, useCallback, useImperativeHandle, forwardRef, useMemo, useLayoutEffect } from 'react';
 import { Loader2, Wand2, Check, MessageSquare, RefreshCw, Trash2, Zap, Heart, Eye, Languages } from 'lucide-react';
 import { AppSettings, FontType, AIRevisionMode, SnippetType } from '../types';
@@ -720,14 +718,18 @@ const Editor = forwardRef<EditorHandle, Props>(({ content, onChange, settings, r
 
   const handleEditorClick = useCallback((e: React.MouseEvent) => {
     if (readOnly) return;
-    const target = e.target as HTMLElement;
-    if (target.classList.contains('diff-interactive')) {
+    
+    // Improved target detection using .closest() to handle clicks on inner elements (like markers)
+    const target = (e.target as HTMLElement).closest('.diff-interactive') as HTMLElement;
+    
+    if (target) {
       e.preventDefault();
       e.stopPropagation();
       
       if (editorRef.current) saveSnapshot(editorRef.current.innerHTML, getCaretGlobalOffset(editorRef.current));
 
       const currentState = target.getAttribute('data-state');
+      // Fix: Use getAttribute to reliably get value even if casing/DOM property issues exist
       const original = target.getAttribute('data-original') || '';
       const modified = target.getAttribute('data-modified') || '';
       
@@ -742,14 +744,25 @@ const Editor = forwardRef<EditorHandle, Props>(({ content, onChange, settings, r
       };
 
       if (currentState === 'modified') {
+        // Switch to Original (Red)
         target.setAttribute('data-state', 'original');
-        if (!original) target.innerHTML = '&nbsp;'; 
-        // Use innerHTML with replaced <br> to preserve line breaks, instead of innerText
-        else target.innerHTML = escapeHtmlForDisplay(original).replace(/\n/g, '<br>');
+        if (!original) {
+           // Pure Insertion: Original is empty. Show placeholder.
+           target.innerHTML = '<span class="text-zinc-500 text-[10px] select-none align-middle mx-1 pointer-events-none">(추가됨)</span>';
+        } else {
+           // Substitution: Show original text
+           target.innerHTML = escapeHtmlForDisplay(original).replace(/\n/g, '<br>');
+        }
       } else {
+        // Switch back to Modified (Blue)
         target.setAttribute('data-state', 'modified');
-        if (!modified) target.innerHTML = '&nbsp;';
-        else target.innerHTML = escapeHtmlForDisplay(modified).replace(/\n/g, '<br>');
+        if (!modified) {
+           // Pure Deletion: Modified is empty (gone). Show marker.
+           target.innerHTML = '<span class="text-zinc-500 text-[10px] select-none align-middle mx-0.5 pointer-events-none">[-]</span>';
+        } else {
+           // Substitution/Insertion: Show new text
+           target.innerHTML = escapeHtmlForDisplay(modified).replace(/\n/g, '<br>');
+        }
       }
       handleInput();
     }

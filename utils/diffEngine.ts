@@ -5,6 +5,7 @@
  */
 
 // Tokenizes text into words and whitespace/punctuation/newlines
+// Note: computeDiff defines its own tokenizer, so this standalone function is kept for potential future use or reference.
 const tokenize = (text: string): string[] => {
   // Split by spaces, newlines, but keep delimiters
   return text.split(/([\s\S])/).filter(s => s.length > 0);
@@ -13,8 +14,10 @@ const tokenize = (text: string): string[] => {
 // Basic diff implementation (simplified Myers or similar approach sufficient for short text chunks)
 // Since we need to run this in browser without large deps, we implement a simple LCS based diff.
 const computeDiff = (original: string, modified: string) => {
-  // Revert to simpler tokenizer that doesn't explicitly isolate newlines,
-  // restoring previous behavior for diff calculation.
+  // Use a simpler tokenizer that splits by whitespace or word boundaries.
+  // This helps group words together but respects punctuation.
+  // Ideally, for CJK, we might want character-level diffs if word splitting fails, 
+  // but this regex is a reasonable compromise for performance.
   const pattern = /(\s+|\b)/; 
   const tokens1 = original.split(pattern).filter(s => s !== '');
   const tokens2 = modified.split(pattern).filter(s => s !== '');
@@ -85,12 +88,15 @@ export const generateInteractiveDiffHtml = (originalText: string, modifiedText: 
 
     if (pendingInsert && !pendingDelete) {
         // Pure addition
+        // data-original is empty.
         spanHtml = `<span class="diff-interactive" contenteditable="false" data-state="modified" data-original="" data-modified="${escapeHtml(pendingInsert)}">${formatForDisplay(pendingInsert)}</span>`;
     } else if (!pendingInsert && pendingDelete) {
         // Pure deletion
-        // We render an empty span with data attributes so it can be toggled back.
-        // Visually it disappears, which is correct for deletion.
-        spanHtml = `<span class="diff-interactive" contenteditable="false" data-state="modified" data-original="${escapeHtml(pendingDelete)}" data-modified=""></span>`; 
+        // We render a visible marker '[-]' so the user can see something was deleted and click to restore/view it.
+        // data-modified is empty.
+        // pointer-events-none ensures the click bubbles to the container span
+        const marker = '<span class="text-zinc-500 text-[10px] select-none align-middle mx-0.5 pointer-events-none">[-]</span>';
+        spanHtml = `<span class="diff-interactive" contenteditable="false" data-state="modified" data-original="${escapeHtml(pendingDelete)}" data-modified="">${marker}</span>`; 
     } else {
         // Modification (Substitution)
         spanHtml = `<span class="diff-interactive" contenteditable="false" data-state="modified" data-original="${escapeHtml(pendingDelete)}" data-modified="${escapeHtml(pendingInsert)}">${formatForDisplay(pendingInsert)}</span>`;
