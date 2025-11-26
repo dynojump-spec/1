@@ -1,4 +1,6 @@
 
+
+
 import React, { useRef, useEffect, useState, useCallback, useImperativeHandle, forwardRef, useMemo, useLayoutEffect } from 'react';
 import { Loader2, Wand2, Check, MessageSquare, RefreshCw, Trash2, Zap, Heart, Eye, Languages } from 'lucide-react';
 import { AppSettings, FontType, AIRevisionMode, SnippetType } from '../types';
@@ -25,20 +27,27 @@ interface HistoryState {
   caret: number;
 }
 
-const playSuccessSound = () => {
+const playSuccessSound = (volume: number = 0.5) => {
   try {
     const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
     if (!AudioContext) return;
     const ctx = new AudioContext();
     const oscillator = ctx.createOscillator();
     const gainNode = ctx.createGain();
+    
     oscillator.connect(gainNode);
     gainNode.connect(ctx.destination);
+    
+    // Max comfortable volume (0.1) * User setting (0.0 to 1.0)
+    const maxGain = 0.1 * volume;
+    
     oscillator.type = 'sine';
     oscillator.frequency.setValueAtTime(523.25, ctx.currentTime);
     oscillator.frequency.exponentialRampToValueAtTime(1046.5, ctx.currentTime + 0.1);
-    gainNode.gain.setValueAtTime(0.05, ctx.currentTime);
+    
+    gainNode.gain.setValueAtTime(maxGain, ctx.currentTime);
     gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
+    
     oscillator.start();
     oscillator.stop(ctx.currentTime + 0.5);
   } catch (error) { /* ignore */ }
@@ -450,14 +459,14 @@ const Editor = forwardRef<EditorHandle, Props>(({ content, onChange, settings, r
          onChange(newHtml);
          saveSnapshot(newHtml, getCaretGlobalOffset(editorRef.current));
       }
-      playSuccessSound();
+      playSuccessSound(settings.soundVolume);
     } catch (error) {
       console.error(error);
       const msg = error instanceof Error ? error.message : "Unknown error";
       if (msg.includes("API Key")) {
          alert("API 키가 설정되지 않았습니다. 설정 메뉴에서 Google API Key를 입력해주세요.");
       } else {
-         alert("AI 수정 중 오류가 발생했습니다. (잠시 후 다시 시도하거나 키를 확인해주세요)");
+         alert("AI 수정 중 오류가 발생했습니다. (잠시 후 다시 시도하거나 키를 확인해주세요)\n" + msg);
       }
     } finally {
       setIsAIProcessing(false);

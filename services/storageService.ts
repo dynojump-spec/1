@@ -2,6 +2,7 @@
 
 
 
+
 import { NovelDocument, AppSettings, FontType, SnippetType, AVAILABLE_MODELS, Snippet } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -88,6 +89,7 @@ export const getDefaultSettings = (): AppSettings => ({
   aiModel: AVAILABLE_MODELS[0].id,
   assistantModel: AVAILABLE_MODELS[1].id, // Default Assistant to Flash (Faster)
   apiKey: '',
+  soundVolume: 0.5, // Default volume 50%
 });
 
 // Helper to get raw list
@@ -211,6 +213,11 @@ export const getLocalSettings = (): AppSettings | null => {
   // Backwards compatibility for assistantFontSize
   if (!parsed.assistantFontSize) {
     parsed.assistantFontSize = 14;
+  }
+
+  // Backwards compatibility for soundVolume
+  if (typeof parsed.soundVolume === 'undefined') {
+    parsed.soundVolume = 0.5;
   }
 
   if (!parsed.alignment) {

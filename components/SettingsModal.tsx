@@ -2,8 +2,10 @@
 
 
 
+
+
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Plus, Trash2, Keyboard, Command, Type, Palette, Cpu, Download, Upload, AlignJustify, AlignLeft, Wand2, Key, Eye, EyeOff, MessageSquare } from 'lucide-react';
+import { X, Plus, Trash2, Keyboard, Command, Type, Palette, Cpu, Download, Upload, AlignJustify, AlignLeft, Wand2, Key, Eye, EyeOff, MessageSquare, Volume2 } from 'lucide-react';
 import { AppSettings, FontType, Snippet, SnippetType, AVAILABLE_MODELS, AIRevisionMode } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -403,6 +405,26 @@ const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUpdate })
                   <div className="flex justify-between mt-1 text-xs text-zinc-500">
                     <span>12px</span>
                     <span>24px</span>
+                  </div>
+                </div>
+
+                {/* Sound Volume */}
+                <div>
+                  <label className="block mb-2 text-sm font-medium text-zinc-400 flex items-center gap-2">
+                    <Volume2 size={16} /> 알림음 크기 (Sound Volume): {Math.round((settings.soundVolume ?? 0.5) * 100)}%
+                  </label>
+                  <input
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.05"
+                    value={settings.soundVolume ?? 0.5}
+                    onChange={(e) => onUpdate({ ...settings, soundVolume: parseFloat(e.target.value) })}
+                    className="w-full h-2 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-green-500"
+                  />
+                  <div className="flex justify-between mt-1 text-xs text-zinc-500">
+                    <span>Mute</span>
+                    <span>100%</span>
                   </div>
                 </div>
               </div>

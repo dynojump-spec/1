@@ -35,12 +35,15 @@ export interface AppSettings {
   aiModel: string; // Used for Editor Revisions
   assistantModel: string; // NEW: Used for Assistant Chat
   apiKey?: string; // Added: User provided API Key
+  soundVolume: number; // NEW: Notification sound volume (0.0 to 1.0)
 }
 
 // Define available models for the UI
 export const AVAILABLE_MODELS = [
-  { id: 'gemini-3-pro-preview', name: 'Gemini 3.0 Pro (최고 성능/창의성)' },
-  { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash (빠른 속도/효율성)' },
+  { id: 'gemini-3-pro-preview', name: 'Gemini 3.0 Pro (최고 성능/Preview)' },
+  { id: 'gemini-2.0-flash-exp', name: 'Gemini 2.0 Flash Exp (고성능/안정적)' },
+  { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash (빠른 속도)' },
+  { id: 'gemini-flash-lite-latest', name: 'Gemini 2.5 Flash Lite (초고속/경량)' },
 ];
 
 export enum AIRevisionMode {
