@@ -1,8 +1,4 @@
 
-
-
-
-
 import { NovelDocument, AppSettings, FontType, SnippetType, AVAILABLE_MODELS, Snippet } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -85,6 +81,7 @@ export const getDefaultSettings = (): AppSettings => ({
   assistantFontSize: 14, // Default for assistant
   fontType: FontType.SERIF,
   alignment: 'justify', // Default to Justify
+  enableIndentation: true, // Default Indentation to On for novels
   snippets: DEFAULT_SNIPPETS,
   aiModel: AVAILABLE_MODELS[0].id,
   assistantModel: AVAILABLE_MODELS[1].id, // Default Assistant to Flash (Faster)
@@ -223,13 +220,16 @@ export const getLocalSettings = (): AppSettings | null => {
   if (!parsed.alignment) {
     parsed.alignment = 'justify';
   }
+
+  if (typeof parsed.enableIndentation === 'undefined') {
+    parsed.enableIndentation = true;
+  }
   
   if (typeof parsed.apiKey === 'undefined') {
     parsed.apiKey = '';
   }
   
   // Clean up removed property if it exists in localStorage
-  delete parsed.enableIndentation;
   delete parsed.showFormattingMarks;
   
   return parsed;

@@ -789,7 +789,8 @@ const Editor = forwardRef<EditorHandle, Props>(({ content, onChange, settings, r
     tabSize: 4, 
     textAlign: settings.alignment, 
     wordBreak: 'break-all' as any, 
-    overflowWrap: 'break-word' as any, 
+    overflowWrap: 'break-word' as any,
+    textIndent: settings.enableIndentation ? '1em' : '0', // Added text-indent
   }), [settings]);
 
   return (

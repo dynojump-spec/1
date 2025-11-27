@@ -1,3 +1,4 @@
+
 export interface NovelDocument {
   id: string;
   title: string;
@@ -29,6 +30,7 @@ export interface AppSettings {
   assistantFontSize: number; // NEW: Assistant font size
   fontType: FontType;
   alignment: 'justify' | 'left'; // Added: Text Alignment preference
+  enableIndentation?: boolean; // Added: Paragraph Indentation
   snippets: Snippet[];
   aiModel: string; // Used for Editor Revisions
   assistantModel: string; // NEW: Used for Assistant Chat

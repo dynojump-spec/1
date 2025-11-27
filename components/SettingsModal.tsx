@@ -1,11 +1,6 @@
 
-
-
-
-
-
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Plus, Trash2, Keyboard, Command, Type, Palette, Cpu, Download, Upload, AlignJustify, AlignLeft, Wand2, Key, Eye, EyeOff, MessageSquare, Volume2 } from 'lucide-react';
+import { X, Plus, Trash2, Keyboard, Command, Type, Palette, Cpu, Download, Upload, AlignJustify, AlignLeft, Wand2, Key, Eye, EyeOff, MessageSquare, Volume2, Indent } from 'lucide-react';
 import { AppSettings, FontType, Snippet, SnippetType, AVAILABLE_MODELS, AIRevisionMode } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -339,10 +334,10 @@ const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUpdate })
                   </div>
                 </div>
 
-                {/* Paragraph Alignment */}
+                {/* Paragraph Alignment & Indentation */}
                 <div>
-                  <label className="block mb-2 text-sm font-medium text-zinc-400">문단 정렬 (Paragraph Alignment)</label>
-                  <div className="grid grid-cols-2 gap-3">
+                  <label className="block mb-2 text-sm font-medium text-zinc-400">문단 설정 (Alignment & Indent)</label>
+                  <div className="grid grid-cols-2 gap-3 mb-3">
                     <button
                       onClick={() => onUpdate({ ...settings, alignment: 'justify' })}
                       className={`p-3 rounded border text-sm flex items-center justify-center gap-2 ${
@@ -366,6 +361,19 @@ const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUpdate })
                       왼쪽 정렬
                     </button>
                   </div>
+                  
+                  {/* Indentation Toggle */}
+                  <button
+                    onClick={() => onUpdate({ ...settings, enableIndentation: !settings.enableIndentation })}
+                    className={`w-full p-3 rounded border text-sm flex items-center justify-center gap-2 transition-colors ${
+                      settings.enableIndentation
+                        ? 'border-blue-500 bg-blue-900/20 text-blue-100'
+                        : 'border-zinc-700 bg-zinc-800 text-zinc-400 hover:bg-zinc-750'
+                    }`}
+                  >
+                    <Indent size={16} />
+                    {settings.enableIndentation ? '문단 들여쓰기 켜짐 (On)' : '문단 들여쓰기 꺼짐 (Off)'}
+                  </button>
                 </div>
 
                 {/* Font Size */}
