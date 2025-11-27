@@ -189,6 +189,15 @@ const Editor = forwardRef<EditorHandle, Props>(({ content, onChange, settings, r
     }
   }, [content]);
 
+  // Enable default paragraph separator as div
+  useEffect(() => {
+    if (editorRef.current) {
+        // This ensures that pressing Enter creates a new <div> paragraph instead of <br> or <p>
+        // This is crucial for text-indent to work on every paragraph.
+        document.execCommand('defaultParagraphSeparator', false, 'div');
+    }
+  }, []);
+
   // Disable editing if readOnly
   useEffect(() => {
     if (editorRef.current) {
@@ -293,26 +302,32 @@ const Editor = forwardRef<EditorHandle, Props>(({ content, onChange, settings, r
     }
   }, [onChange, readOnly, saveSnapshot]); 
 
-  // Handle Paste: Force plain text but preserve line breaks visually
+  // Handle Paste: Create DIVs for each line to ensure Indentation works
   const handlePaste = useCallback((e: React.ClipboardEvent) => {
     if (readOnly) return;
     e.preventDefault();
     
     // 1. Get plain text (strips original styles/backgrounds)
-    let text = e.clipboardData.getData('text/plain');
-
+    const text = e.clipboardData.getData('text/plain');
     if (!text) return;
 
-    // 2. Escape HTML characters to prevent code injection and ensure text renders literally
-    text = text
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#039;");
+    // 2. Escape HTML characters
+    const escapeHtml = (str: string) => {
+      return str
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    };
 
-    // 3. Convert newlines to <br> tags
-    const htmlContent = text.replace(/\r\n|\r|\n/g, '<br>');
+    // 3. Convert newlines to <div> paragraphs
+    // This allows CSS text-indent to apply to the first line of *each* paragraph
+    const paragraphs = text.split(/\r\n|\r|\n/);
+    const htmlContent = paragraphs.map(line => {
+        // If line is empty, use <br> inside div to maintain height
+        return `<div>${escapeHtml(line) || '<br>'}</div>`;
+    }).join('');
 
     // 4. Insert as HTML
     document.execCommand('insertHTML', false, htmlContent);
@@ -657,7 +672,7 @@ const Editor = forwardRef<EditorHandle, Props>(({ content, onChange, settings, r
       }
       handleInput();
     }
-  }, [readOnly, settings.snippets, undo, redo, handleInput, saveSnapshot, settings.aiModel, settings.apiKey]); // Added apiKey dependency
+  }, [readOnly, settings.snippets, undo, redo, handleInput, saveSnapshot, settings.aiModel, settings.apiKey]);
 
   const handleSelectionChange = useCallback(() => {
     const selection = window.getSelection();
