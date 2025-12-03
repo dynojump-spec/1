@@ -25,17 +25,40 @@ export interface Snippet {
   type: SnippetType;
 }
 
+export interface KnowledgeFile {
+  id: string;
+  name: string;
+  content: string; // Text content of the file
+  size: number;
+}
+
+export interface AssistantPersona {
+  name: string;
+  instruction: string; // System Instructions (You are a...)
+  knowledge: string; // Background knowledge (Text)
+  files?: KnowledgeFile[]; // Attached Knowledge Files
+}
+
 export interface AppSettings {
   fontSize: number;
-  assistantFontSize: number; // NEW: Assistant font size
+  assistantFontSize: number;
   fontType: FontType;
-  alignment: 'justify' | 'left'; // Added: Text Alignment preference
-  enableIndentation?: boolean; // Added: Paragraph Indentation
+  alignment: 'justify' | 'left';
+  enableIndentation?: boolean;
   snippets: Snippet[];
-  aiModel: string; // Used for Editor Revisions
-  assistantModel: string; // NEW: Used for Assistant Chat
-  apiKey?: string; // Added: User provided API Key
-  soundVolume: number; // NEW: Notification sound volume (0.0 to 1.0)
+  aiModel: string; // Editor Model
+  
+  // Dual Assistant Settings
+  leftAssistantModel: string;
+  rightAssistantModel: string;
+  leftAssistantPersona: AssistantPersona;
+  rightAssistantPersona: AssistantPersona;
+
+  apiKey?: string;
+  soundVolume: number;
+  
+  // Deprecated but kept for type safety during migration if needed
+  assistantModel?: string; 
 }
 
 // Define available models for the UI
@@ -67,9 +90,31 @@ export interface SelectionRangeData {
   containerHtml: string; // The full HTML of the paragraph(s) or container
 }
 
+export interface SearchSource {
+  title: string;
+  uri: string;
+}
+
+export interface Attachment {
+  id: string;
+  name: string;
+  type: 'image' | 'text' | 'file';
+  mimeType: string;
+  data: string; // Base64 string for images, or raw text for text files
+}
+
 export interface ChatMessage {
   id: string;
   role: 'user' | 'model';
   text: string;
   isLoading?: boolean;
+  sources?: SearchSource[]; // Added for Search Grounding
+  attachments?: Attachment[]; // Added for File Attachments
+}
+
+export interface ChatSession {
+  id: string;
+  title: string;
+  messages: ChatMessage[];
+  lastModified: number;
 }

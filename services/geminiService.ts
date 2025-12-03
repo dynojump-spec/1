@@ -1,5 +1,6 @@
-import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
-import { AIRevisionMode, ChatMessage } from '../types';
+
+import { GoogleGenAI, GenerateContentResponse, Part } from "@google/genai";
+import { AIRevisionMode, ChatMessage, SearchSource, AssistantPersona } from '../types';
 
 const SYSTEM_INSTRUCTION = `
 You are an expert Korean web novel editor (웹소설 PD/Editor).
@@ -9,17 +10,15 @@ RULES:
 1. Output ONLY the revised text. Do not include any explanations, markdown formatting (like \`\`\`), or conversational filler.
 2. LANGUAGE: The output MUST be in natural Korean (Hangul), appropriate for web novels.
 3. AUTO-COMPLETION: If the input text contains incomplete sentences or fragments (e.g., ends abruptly), you MUST logically and naturally complete the sentence based on the context BEFORE applying the specific revision style.
-4. FORMATTING IS CRITICAL: 
-   - You must preserve the original line breaks, empty lines, and indentation style exactly.
-   - Do NOT merge paragraphs.
-   - Do NOT add extra blank lines between paragraphs.
-   - Do NOT add newlines inside a sentence.
-   - The number of text blocks/paragraphs should generally remain the same.
+4. FORMATTING IS CRITICAL - STRICT ADHERENCE REQUIRED: 
+   - **PRESERVE LINE BREAKS EXACTLY**: You must maintain the original line breaks (Enter) and paragraph separations.
+   - **DO NOT MERGE PARAGRAPHS**: Keep the exact same number of text blocks/paragraphs as the input.
+   - **DO NOT ADD EXTRA BLANK LINES**: Maintain the original vertical spacing.
+   - **DO NOT ADD NEWLINES INSIDE A SENTENCE**: Keep sentences within their original paragraphs.
 `;
 
 const getPromptForMode = (mode: AIRevisionMode, text: string): string => {
-  // Updated format note to explicitly request sentence completion in Korean
-  const formatNote = "중요: 1. 원문의 줄바꿈과 문단 구분을 정확히 유지하세요. 2. 입력된 문장이 미완성(끊김) 상태라면, 문맥에 맞게 자연스럽게 문장을 완성시킨 후 수정하세요.";
+  const formatNote = "매우 중요: 1. 원문의 줄바꿈(엔터) 위치와 문단 구분을 **절대 변경하지 마세요**. 문단을 합치거나 나누지 말고 원형을 유지하세요. 2. 입력된 문장이 미완성(끊김) 상태라면, 문맥에 맞게 자연스럽게 문장을 완성시킨 후 수정하세요.";
   
   switch (mode) {
     case AIRevisionMode.GRAMMAR:
@@ -48,7 +47,6 @@ const getPromptForMode = (mode: AIRevisionMode, text: string): string => {
   }
 };
 
-// Retry logic to handle transient network/server errors (Code 6 XHR, 500, 503)
 async function retryWithBackoff<T>(fn: () => Promise<T>, retries = 3, delay = 1000): Promise<T> {
   try {
     return await fn();
@@ -56,14 +54,13 @@ async function retryWithBackoff<T>(fn: () => Promise<T>, retries = 3, delay = 10
     const msg = error?.message || '';
     const status = error?.status || error?.code;
     
-    // Retry conditions: Network errors (xhr), Server errors (5xx)
     const shouldRetry = retries > 0 && (
       msg.includes('xhr error') || 
       msg.includes('fetch failed') || 
       msg.includes('NetworkError') ||
       status === 500 || 
       status === 503 ||
-      status === 'UNKNOWN' // Code 6 often maps to UNKNOWN status in some SDK versions
+      status === 'UNKNOWN'
     );
 
     if (shouldRetry) {
@@ -100,8 +97,6 @@ export const generateRevision = async (
     }));
 
     let result = response.text?.trim() || text;
-    
-    // Remove Markdown code blocks if present
     result = result.replace(/^```(?:html|text)?\s*/i, '').replace(/\s*```$/, '').trim();
     
     return result; 
@@ -111,13 +106,20 @@ export const generateRevision = async (
   }
 };
 
+interface ChatResponse {
+  text: string;
+  sources?: SearchSource[];
+}
+
 // General Chat Function for the Assistant Panel
 export const chatWithAssistant = async (
   history: ChatMessage[],
   newMessage: string,
   modelName: string = 'gemini-2.5-flash',
-  apiKey?: string
-): Promise<string> => {
+  apiKey?: string,
+  attachments: ChatMessage['attachments'] = [],
+  persona?: AssistantPersona
+): Promise<ChatResponse> => {
   try {
     const key = (apiKey || process.env.API_KEY || '').trim();
     if (!key) {
@@ -126,29 +128,115 @@ export const chatWithAssistant = async (
 
     const ai = new GoogleGenAI({ apiKey: key });
 
-    // Transform internal ChatMessage format to Gemini API content format
     const contents = history
-      .filter(msg => !msg.isLoading && msg.text)
-      .map(msg => ({
-        role: msg.role,
-        parts: [{ text: msg.text }]
-      }));
+      .filter(msg => !msg.isLoading && (msg.text || (msg.attachments && msg.attachments.length > 0)))
+      .map(msg => {
+        const parts: Part[] = [];
+        
+        if (msg.attachments) {
+          msg.attachments.forEach(att => {
+            if (att.type === 'image') {
+              parts.push({
+                inlineData: {
+                  mimeType: att.mimeType,
+                  data: att.data 
+                }
+              });
+            } else {
+              parts.push({
+                text: `[File Attachment: ${att.name}]\n${att.data}\n`
+              });
+            }
+          });
+        }
+        
+        if (msg.text) {
+          parts.push({ text: msg.text });
+        }
+
+        return {
+          role: msg.role,
+          parts: parts
+        };
+      });
     
-    // Add the new message
+    const newParts: Part[] = [];
+    
+    if (attachments && attachments.length > 0) {
+      attachments.forEach(att => {
+         if (att.type === 'image') {
+           newParts.push({
+             inlineData: {
+               mimeType: att.mimeType,
+               data: att.data
+             }
+           });
+         } else {
+           newParts.push({
+             text: `[File Attachment: ${att.name}]\n${att.data}\n`
+           });
+         }
+      });
+    }
+
+    newParts.push({ text: newMessage });
+
     contents.push({
       role: 'user',
-      parts: [{ text: newMessage }]
+      parts: newParts
     });
+
+    // Build Dynamic System Instruction based on Persona
+    let baseInstruction = "You are a helpful assistant for a web novel writer (Google Gemini). You can search the web for real-time information if needed. Provide concise, creative, and accurate answers regarding plotting, character names, settings, synonyms, and general knowledge. You communicate in Korean. When files are attached, analyze them to assist the user. IMPORTANT: Use **bold text** (**text**) to emphasize key terms, headers, names, or important conclusions to improve readability.";
+    
+    if (persona) {
+        let personaInstruction = "";
+        if (persona.instruction && persona.instruction.trim()) {
+            personaInstruction += `\n\n[ROLE & INSTRUCTION]\n${persona.instruction}`;
+        }
+        
+        // Add text-based Knowledge
+        if (persona.knowledge && persona.knowledge.trim()) {
+            personaInstruction += `\n\n[KNOWLEDGE BASE / REFERENCE]\n${persona.knowledge}`;
+        }
+
+        // Add Attached Files to Knowledge Base
+        if (persona.files && persona.files.length > 0) {
+           personaInstruction += `\n\n[ATTACHED KNOWLEDGE FILES]`;
+           persona.files.forEach(file => {
+             personaInstruction += `\n--- START OF FILE: ${file.name} ---\n${file.content}\n--- END OF FILE: ${file.name} ---\n`;
+           });
+        }
+        
+        // If persona instruction exists, it overrides or appends to the base
+        if (personaInstruction) {
+            baseInstruction = `${baseInstruction}${personaInstruction}`;
+        }
+    }
 
     const response = await retryWithBackoff<GenerateContentResponse>(() => ai.models.generateContent({
       model: modelName,
       contents: contents,
       config: {
-        systemInstruction: "You are a helpful assistant for a web novel writer. Provide concise, creative, and accurate answers regarding plotting, character names, settings, synonyms, and general knowledge. You communicate in Korean.",
+        tools: [{ googleSearch: {} }],
+        systemInstruction: baseInstruction,
       }
     }));
 
-    return response.text || "죄송합니다. 답변을 생성할 수 없습니다.";
+    const text = response.text || "죄송합니다. 답변을 생성할 수 없습니다.";
+
+    let sources: SearchSource[] = [];
+    if (response.candidates?.[0]?.groundingMetadata?.groundingChunks) {
+      sources = response.candidates[0].groundingMetadata.groundingChunks
+        .map((chunk: any) => chunk.web)
+        .filter((web: any) => web && web.uri && web.title)
+        .map((web: any) => ({
+          title: web.title,
+          uri: web.uri
+        }));
+    }
+
+    return { text, sources };
   } catch (error) {
     console.error("Gemini Chat Error:", error);
     throw error;

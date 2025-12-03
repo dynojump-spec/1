@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Plus, Trash2, Keyboard, Command, Type, Palette, Cpu, Download, Upload, AlignJustify, AlignLeft, Wand2, Key, Eye, EyeOff, MessageSquare, Volume2, Indent } from 'lucide-react';
-import { AppSettings, FontType, Snippet, SnippetType, AVAILABLE_MODELS, AIRevisionMode } from '../types';
+import { X, Plus, Trash2, Keyboard, Command, Type, Palette, Cpu, Download, Upload, AlignJustify, AlignLeft, Wand2, Key, Eye, EyeOff, MessageSquare, Volume2, Indent, Bot, PanelLeft, PanelRight, BookOpen, UserCircle, PenTool, FileUp, FileText } from 'lucide-react';
+import { AppSettings, FontType, Snippet, SnippetType, AVAILABLE_MODELS, AIRevisionMode, KnowledgeFile } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 
 interface Props {
@@ -22,14 +22,18 @@ const AI_MODE_LABELS: Record<string, string> = {
 };
 
 const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUpdate }) => {
-  const [activeTab, setActiveTab] = useState<'general' | 'shortcuts'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'assistants' | 'shortcuts'>('general');
   const [newTrigger, setNewTrigger] = useState('');
   const [newSnippetType, setNewSnippetType] = useState<SnippetType>(SnippetType.TEXT);
   const [newSnippetValue, setNewSnippetValue] = useState('');
   const [isRecording, setIsRecording] = useState(false);
   const [showApiKey, setShowApiKey] = useState(false);
   
+  // Assistant Tab State
+  const [assistantTabMode, setAssistantTabMode] = useState<'left' | 'right'>('right');
+  
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const knowledgeFileInputRef = useRef<HTMLInputElement>(null);
 
   // Reset inputs when opening/closing
   useEffect(() => {
@@ -103,7 +107,6 @@ const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUpdate })
     setNewSnippetValue(prev => prev + '{|}');
   };
 
-  // Export Snippets to JSON
   const handleExportSnippets = () => {
     const dataStr = JSON.stringify(settings.snippets || [], null, 2);
     const blob = new Blob([dataStr], { type: "application/json" });
@@ -116,7 +119,6 @@ const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUpdate })
     document.body.removeChild(link);
   };
 
-  // Import Snippets from JSON
   const handleImportClick = () => {
     fileInputRef.current?.click();
   };
@@ -132,11 +134,10 @@ const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUpdate })
         const parsed = JSON.parse(content);
 
         if (Array.isArray(parsed)) {
-          // Validation and Sanitization
           const validSnippets: Snippet[] = parsed
             .filter((item: any) => item && typeof item === 'object' && item.trigger)
             .map((item: any) => ({
-              id: item.id || uuidv4(), // Ensure ID exists
+              id: item.id || uuidv4(),
               trigger: item.trigger,
               text: item.text || '',
               type: Object.values(SnippetType).includes(item.type) ? item.type : SnippetType.TEXT
@@ -146,23 +147,18 @@ const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUpdate })
             const existingSnippets = settings.snippets || [];
             
             if (existingSnippets.length === 0) {
-              // If list is empty, just load
               onUpdate({ ...settings, snippets: validSnippets });
               alert(`${validSnippets.length}개의 단축키를 불러왔습니다.`);
             } else {
-              // Logic for Merge vs Replace
-              // Step 1: Ask to Merge
               if (window.confirm(`불러온 ${validSnippets.length}개의 단축키를 기존 목록에 '추가(Merge)' 하시겠습니까?\n\n[확인]: 기존 목록 뒤에 추가합니다. (중복 키는 덮어씌움)\n[취소]: 다음 단계로 이동 (전체 교체 여부 확인)`)) {
-                 // Merge Logic: Create a map by trigger to handle duplicates (incoming wins)
                  const snippetMap = new Map();
                  existingSnippets.forEach(s => snippetMap.set(s.trigger, s));
-                 validSnippets.forEach(s => snippetMap.set(s.trigger, s)); // Incoming overwrites existing trigger
+                 validSnippets.forEach(s => snippetMap.set(s.trigger, s));
                  
                  const mergedSnippets = Array.from(snippetMap.values());
                  onUpdate({ ...settings, snippets: mergedSnippets });
                  alert("성공적으로 추가(병합)되었습니다.");
               } else {
-                // Step 2: Ask to Replace
                 if (window.confirm(`그렇다면 기존 목록을 모두 '삭제'하고 덮어쓰시겠습니까?\n\n[확인]: 기존 목록 삭제 후 덮어쓰기\n[취소]: 작업 취소`)) {
                   onUpdate({ ...settings, snippets: validSnippets });
                   alert("단축키 목록이 교체되었습니다.");
@@ -170,10 +166,10 @@ const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUpdate })
               }
             }
           } else {
-            alert("파일에서 유효한 단축키 정보를 찾을 수 없습니다.\n(각 항목에 'trigger' 필드가 필요합니다)");
+            alert("파일에서 유효한 단축키 정보를 찾을 수 없습니다.");
           }
         } else {
-          alert("올바르지 않은 JSON 파일입니다. (배열 형식이 아닙니다)");
+          alert("올바르지 않은 JSON 파일입니다.");
         }
       } catch (err) {
         console.error("Import Error:", err);
@@ -181,14 +177,82 @@ const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUpdate })
       }
     };
     reader.readAsText(file);
-    
-    // Reset input value so same file can be selected again
     if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  // Helper to get current assistant config based on tab
+  const getAssistantConfig = () => {
+    return assistantTabMode === 'left' ? {
+      model: settings.leftAssistantModel || AVAILABLE_MODELS[1].id,
+      persona: settings.leftAssistantPersona
+    } : {
+      model: settings.rightAssistantModel || AVAILABLE_MODELS[1].id,
+      persona: settings.rightAssistantPersona
+    };
+  };
+
+  const updateAssistantConfig = (field: string, value: any) => {
+    if (assistantTabMode === 'left') {
+      if (field === 'model') {
+        onUpdate({ ...settings, leftAssistantModel: value });
+      } else {
+        onUpdate({ 
+          ...settings, 
+          leftAssistantPersona: { ...settings.leftAssistantPersona, [field]: value } 
+        });
+      }
+    } else {
+      if (field === 'model') {
+        onUpdate({ ...settings, rightAssistantModel: value });
+      } else {
+        onUpdate({ 
+          ...settings, 
+          rightAssistantPersona: { ...settings.rightAssistantPersona, [field]: value } 
+        });
+      }
+    }
+  };
+
+  const handleKnowledgeFileAdd = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Size limit check removed as requested.
+    // WARNING: Large files may exceed browser LocalStorage limits (approx 5-10MB).
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const content = event.target?.result as string;
+      if (content) {
+        const newFile: KnowledgeFile = {
+            id: uuidv4(),
+            name: file.name,
+            content: content,
+            size: file.size
+        };
+
+        const currentFiles = getAssistantConfig().persona?.files || [];
+        updateAssistantConfig('files', [...currentFiles, newFile]);
+      }
+    };
+    reader.onerror = () => {
+      alert("파일을 읽는데 실패했습니다.");
+    };
+    reader.readAsText(file);
+    
+    // Reset input
+    if (knowledgeFileInputRef.current) knowledgeFileInputRef.current.value = '';
+  };
+
+  const removeKnowledgeFile = (id: string) => {
+      if (!window.confirm("이 참조 파일을 삭제하시겠습니까?")) return;
+      const currentFiles = getAssistantConfig().persona?.files || [];
+      updateAssistantConfig('files', currentFiles.filter(f => f.id !== id));
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div className="w-full max-w-lg rounded-lg border border-zinc-800 bg-zinc-900 p-6 shadow-xl flex flex-col max-h-[85vh]">
+      <div className="w-full max-w-2xl rounded-lg border border-zinc-800 bg-zinc-900 p-6 shadow-xl flex flex-col max-h-[90vh]">
         <div className="flex items-center justify-between mb-6 shrink-0">
           <h2 className="text-xl font-bold text-zinc-100">설정 (Settings)</h2>
           <button onClick={onClose} className="text-zinc-400 hover:text-zinc-100">
@@ -206,6 +270,15 @@ const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUpdate })
           >
             일반 (General)
             {activeTab === 'general' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-400" />}
+          </button>
+          <button
+            onClick={() => setActiveTab('assistants')}
+            className={`pb-2 px-4 text-sm font-medium transition-colors relative ${
+              activeTab === 'assistants' ? 'text-purple-400' : 'text-zinc-400 hover:text-zinc-200'
+            }`}
+          >
+            AI 어시스턴트 (Assistants)
+            {activeTab === 'assistants' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-purple-400" />}
           </button>
           <button
             onClick={() => setActiveTab('shortcuts')}
@@ -242,64 +315,27 @@ const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUpdate })
                   </button>
                 </div>
                 <p className="text-xs text-zinc-500 mt-2">
-                  * 키는 로컬 브라우저에만 저장되며 서버로 전송되지 않습니다.<br/>
-                  * <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="text-blue-400 hover:underline">Google AI Studio</a>에서 키를 발급받을 수 있습니다.
+                  * 키는 로컬 브라우저에만 저장되며 서버로 전송되지 않습니다.
                 </p>
               </div>
 
-              {/* AI Model Settings Group */}
-              <div className="space-y-4">
-                {/* Editor AI Model */}
-                <div>
-                  <label className="block mb-2 text-sm font-medium text-zinc-400 flex items-center gap-2">
-                    <Cpu size={16} /> 에디터 AI 모델 (Editor / Revision)
-                  </label>
-                  <div className="relative">
-                    <select
-                      value={settings.aiModel || AVAILABLE_MODELS[0].id}
-                      onChange={(e) => onUpdate({ ...settings, aiModel: e.target.value })}
-                      className="w-full p-3 rounded border border-zinc-700 bg-zinc-800 text-zinc-200 text-sm focus:outline-none focus:border-blue-500 appearance-none cursor-pointer"
-                    >
-                      {AVAILABLE_MODELS.map((model) => (
-                        <option key={model.id} value={model.id}>
-                          {model.name}
-                        </option>
-                      ))}
-                    </select>
-                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-zinc-400">
-                      <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
-                        <path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/>
-                      </svg>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Assistant AI Model */}
-                <div>
-                  <label className="block mb-2 text-sm font-medium text-zinc-400 flex items-center gap-2">
-                    <MessageSquare size={16} /> 어시스턴트 AI 모델 (Assistant / Chat)
-                  </label>
-                  <div className="relative">
-                    <select
-                      value={settings.assistantModel || AVAILABLE_MODELS[1].id}
-                      onChange={(e) => onUpdate({ ...settings, assistantModel: e.target.value })}
-                      className="w-full p-3 rounded border border-zinc-700 bg-zinc-800 text-zinc-200 text-sm focus:outline-none focus:border-blue-500 appearance-none cursor-pointer"
-                    >
-                      {AVAILABLE_MODELS.map((model) => (
-                        <option key={model.id} value={model.id}>
-                          {model.name}
-                        </option>
-                      ))}
-                    </select>
-                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-zinc-400">
-                      <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
-                        <path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/>
-                      </svg>
-                    </div>
-                  </div>
-                  <p className="text-xs text-zinc-500 mt-2">
-                    * 에디터는 성능(Pro), 어시스턴트는 속도(Flash) 위주로 설정하는 것을 추천합니다.
-                  </p>
+              {/* Editor AI Model */}
+              <div>
+                <label className="block mb-2 text-sm font-medium text-zinc-400 flex items-center gap-2">
+                  <Cpu size={16} /> 에디터 AI 모델 (Editor / Revision)
+                </label>
+                <div className="relative">
+                  <select
+                    value={settings.aiModel || AVAILABLE_MODELS[0].id}
+                    onChange={(e) => onUpdate({ ...settings, aiModel: e.target.value })}
+                    className="w-full p-3 rounded border border-zinc-700 bg-zinc-800 text-zinc-200 text-sm focus:outline-none focus:border-blue-500 appearance-none cursor-pointer"
+                  >
+                    {AVAILABLE_MODELS.map((model) => (
+                      <option key={model.id} value={model.id}>
+                        {model.name}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
 
@@ -439,6 +475,154 @@ const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUpdate })
             </div>
           )}
 
+          {activeTab === 'assistants' && (
+            <div className="space-y-6">
+              {/* Toggle for Left/Right */}
+              <div className="flex bg-zinc-950 p-1 rounded-lg border border-zinc-800">
+                <button 
+                  onClick={() => setAssistantTabMode('left')}
+                  className={`flex-1 flex items-center justify-center gap-2 py-2 text-sm font-medium rounded-md transition-all ${
+                    assistantTabMode === 'left' ? 'bg-zinc-800 text-purple-400 shadow-sm' : 'text-zinc-500 hover:text-zinc-300'
+                  }`}
+                >
+                  <PanelLeft size={16} /> 왼쪽 패널 설정
+                </button>
+                <button 
+                  onClick={() => setAssistantTabMode('right')}
+                  className={`flex-1 flex items-center justify-center gap-2 py-2 text-sm font-medium rounded-md transition-all ${
+                    assistantTabMode === 'right' ? 'bg-zinc-800 text-purple-400 shadow-sm' : 'text-zinc-500 hover:text-zinc-300'
+                  }`}
+                >
+                  <PanelRight size={16} /> 오른쪽 패널 설정
+                </button>
+              </div>
+
+              <div className="bg-zinc-800/30 rounded-lg p-5 border border-zinc-800">
+                <h3 className="text-sm font-bold text-zinc-200 mb-4 flex items-center gap-2">
+                  <Bot size={16} className="text-purple-400" />
+                  {assistantTabMode === 'left' ? '왼쪽 어시스턴트 구성' : '오른쪽 어시스턴트 구성'}
+                </h3>
+
+                {/* Model Selection */}
+                <div className="mb-5">
+                   <label className="block mb-2 text-xs font-bold text-zinc-400 uppercase tracking-wider">AI 모델 선택</label>
+                   <div className="relative">
+                      <select
+                        value={getAssistantConfig().model}
+                        onChange={(e) => updateAssistantConfig('model', e.target.value)}
+                        className="w-full p-3 rounded border border-zinc-700 bg-zinc-900 text-zinc-200 text-sm focus:outline-none focus:border-purple-500 appearance-none cursor-pointer"
+                      >
+                        {AVAILABLE_MODELS.map((model) => (
+                          <option key={model.id} value={model.id}>
+                            {model.name}
+                          </option>
+                        ))}
+                      </select>
+                   </div>
+                   <p className="text-[10px] text-zinc-500 mt-1">* 빠르고 가벼운 대화에는 'Flash', 복잡한 추론에는 'Pro' 모델을 추천합니다.</p>
+                </div>
+
+                {/* Persona Settings */}
+                <div className="space-y-4 pt-4 border-t border-zinc-700/50">
+                  <h4 className="text-sm font-bold text-zinc-300 flex items-center gap-2">
+                    <UserCircle size={16} /> 페르소나 (Persona) 설정
+                  </h4>
+                  
+                  {/* Name */}
+                  <div>
+                    <label className="block mb-1 text-xs text-zinc-400">이름 (Name)</label>
+                    <input 
+                      type="text" 
+                      value={getAssistantConfig().persona?.name || ''}
+                      onChange={(e) => updateAssistantConfig('name', e.target.value)}
+                      placeholder="예: 설정 오류 탐지봇, 아이디어 뱅크"
+                      className="w-full p-2 rounded border border-zinc-700 bg-zinc-900 text-zinc-200 text-sm focus:outline-none focus:border-purple-500"
+                    />
+                  </div>
+
+                  {/* System Instruction */}
+                  <div>
+                    <label className="block mb-1 text-xs text-zinc-400 flex items-center justify-between">
+                      <span>역할 및 지침 (System Instruction)</span>
+                      <PenTool size={12} />
+                    </label>
+                    <textarea 
+                      value={getAssistantConfig().persona?.instruction || ''}
+                      onChange={(e) => updateAssistantConfig('instruction', e.target.value)}
+                      placeholder="AI에게 부여할 역할과 행동 지침을 입력하세요.&#13;&#10;예: 당신은 까칠하지만 유능한 웹소설 PD입니다. 독자의 흥미를 끄는 요소를 중심으로 피드백해주세요."
+                      className="w-full p-2 rounded border border-zinc-700 bg-zinc-900 text-zinc-300 text-sm focus:outline-none focus:border-purple-500 min-h-[100px] leading-relaxed resize-none"
+                    />
+                  </div>
+
+                  {/* Knowledge Base (Text) */}
+                  <div>
+                     <label className="block mb-1 text-xs text-zinc-400">
+                        기본 지식 / 텍스트 (Knowledge Text)
+                     </label>
+                    <textarea 
+                      value={getAssistantConfig().persona?.knowledge || ''}
+                      onChange={(e) => updateAssistantConfig('knowledge', e.target.value)}
+                      placeholder="간단한 메모나 텍스트 설정은 여기에 입력하세요."
+                      className="w-full p-2 rounded border border-zinc-700 bg-zinc-900 text-zinc-300 text-sm focus:outline-none focus:border-purple-500 min-h-[80px] leading-relaxed resize-none font-mono text-xs mb-3"
+                    />
+                  </div>
+
+                  {/* Knowledge Base (Files) */}
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="text-xs text-zinc-400 flex items-center gap-1">
+                        <span>참조 파일 목록 (Attached Knowledge Files)</span>
+                        <BookOpen size={12} />
+                      </label>
+                      <button 
+                        onClick={() => knowledgeFileInputRef.current?.click()}
+                        className="text-[10px] flex items-center gap-1 px-2 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded border border-zinc-700 transition-colors"
+                      >
+                        <FileUp size={10} />
+                        파일 추가하기
+                      </button>
+                      <input 
+                        type="file" 
+                        ref={knowledgeFileInputRef}
+                        onChange={handleKnowledgeFileAdd}
+                        className="hidden" 
+                        accept=".txt,.md,.csv,.json,.jsonl" 
+                      />
+                    </div>
+                    
+                    <div className="space-y-2">
+                      {(getAssistantConfig().persona?.files || []).map((file) => (
+                         <div key={file.id} className="flex items-center justify-between p-2 rounded bg-zinc-900 border border-zinc-700">
+                            <div className="flex items-center gap-2 overflow-hidden">
+                               <div className="w-6 h-6 rounded bg-zinc-800 flex items-center justify-center shrink-0 text-zinc-500">
+                                  <FileText size={12} />
+                               </div>
+                               <div className="flex flex-col min-w-0">
+                                  <span className="text-xs text-zinc-300 truncate font-medium">{file.name}</span>
+                                  <span className="text-[10px] text-zinc-500">{(file.size / 1024).toFixed(1)} KB</span>
+                               </div>
+                            </div>
+                            <button 
+                               onClick={() => removeKnowledgeFile(file.id)}
+                               className="p-1 text-zinc-500 hover:text-red-400 hover:bg-zinc-800 rounded transition-colors"
+                            >
+                               <Trash2 size={12} />
+                            </button>
+                         </div>
+                      ))}
+                      {(getAssistantConfig().persona?.files || []).length === 0 && (
+                         <div className="text-center py-4 bg-zinc-900/50 border border-dashed border-zinc-800 rounded text-zinc-600 text-xs">
+                            등록된 참조 파일이 없습니다.
+                         </div>
+                      )}
+                    </div>
+                    <p className="text-[10px] text-zinc-500 mt-2">* 텍스트(.txt, .md, .csv) 파일만 지원합니다.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {activeTab === 'shortcuts' && (
             <div className="space-y-6">
               {/* Import/Export Actions */}
@@ -446,14 +630,12 @@ const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUpdate })
                 <button 
                   onClick={handleExportSnippets}
                   className="flex items-center justify-center gap-2 px-3 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg border border-zinc-700 text-xs font-bold transition-all active:scale-95 shadow-sm"
-                  title="현재 단축키 목록을 JSON 파일로 저장합니다"
                 >
                   <Download size={14} /> 목록 내보내기
                 </button>
                 <button 
                   onClick={handleImportClick}
                   className="flex items-center justify-center gap-2 px-3 py-2.5 bg-blue-900/30 hover:bg-blue-900/50 text-blue-200 rounded-lg border border-blue-800/50 text-xs font-bold transition-all active:scale-95 shadow-sm"
-                  title="저장된 단축키 파일을 불러와 추가하거나 교체합니다"
                 >
                   <Upload size={14} /> 목록 불러오기
                 </button>
@@ -529,7 +711,7 @@ const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUpdate })
                     </div>
                   </div>
 
-                  {/* Value Input (Text or Color or AI) */}
+                  {/* Value Input */}
                   <div>
                     {newSnippetType === SnippetType.TEXT && (
                       <>
@@ -538,7 +720,6 @@ const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUpdate })
                           <button 
                             onClick={insertCursorMarker}
                             className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1 bg-blue-900/30 px-2 py-0.5 rounded border border-blue-800/50"
-                            title="입력 후 커서가 위치할 곳을 지정합니다"
                           >
                             <Type size={10} /> 커서 위치 {"{|}"} 삽입
                           </button>
@@ -549,9 +730,6 @@ const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUpdate })
                           placeholder='예: "말하기" {|}'
                           className="w-full p-2 rounded border border-zinc-700 bg-zinc-900 text-zinc-300 text-sm focus:outline-none focus:border-blue-500 min-h-[60px]"
                         />
-                         <p className="text-[10px] text-zinc-500 mt-1">
-                          * <code>{"{|}"}</code>를 입력하면 해당 위치에 커서가 놓입니다. (예: <code>"{"{|}"}"</code>)
-                        </p>
                       </>
                     )}
                     
@@ -566,18 +744,6 @@ const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUpdate })
                             className="h-8 w-12 bg-transparent cursor-pointer"
                           />
                           <span className="text-sm text-zinc-300 font-mono">{newSnippetValue}</span>
-                          
-                          {/* Preset Colors */}
-                          <div className="flex gap-1 ml-auto">
-                            {['#f87171', '#60a5fa', '#facc15', '#4ade80', '#e879f9', '#ffffff'].map(color => (
-                              <button
-                                key={color}
-                                onClick={() => setNewSnippetValue(color)}
-                                className="w-5 h-5 rounded-full border border-zinc-600 hover:scale-110 transition-transform"
-                                style={{ backgroundColor: color }}
-                              />
-                            ))}
-                          </div>
                         </div>
                       </>
                     )}
@@ -596,9 +762,6 @@ const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUpdate })
                             </option>
                           ))}
                         </select>
-                        <p className="text-[10px] text-zinc-500 mt-1">
-                          * 텍스트를 드래그하여 선택한 상태에서 단축키를 눌러야 작동합니다.
-                        </p>
                        </>
                     )}
                   </div>

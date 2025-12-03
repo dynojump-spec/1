@@ -78,15 +78,33 @@ const DEFAULT_SNIPPETS: Snippet[] = [
 // Expose Default Settings for Reset functionality
 export const getDefaultSettings = (): AppSettings => ({
   fontSize: 18,
-  assistantFontSize: 14, // Default for assistant
+  assistantFontSize: 14,
   fontType: FontType.SERIF,
-  alignment: 'justify', // Default to Justify
-  enableIndentation: true, // Default Indentation to On for novels
+  alignment: 'justify',
+  enableIndentation: true,
   snippets: DEFAULT_SNIPPETS,
   aiModel: AVAILABLE_MODELS[0].id,
-  assistantModel: AVAILABLE_MODELS[1].id, // Default Assistant to Flash (Faster)
+  
+  // Default Assistant Models
+  leftAssistantModel: AVAILABLE_MODELS[1].id,
+  rightAssistantModel: AVAILABLE_MODELS[1].id,
+
+  // Default Personas
+  leftAssistantPersona: {
+    name: '아이디어 뱅크',
+    instruction: '당신은 창의적인 웹소설 플롯 및 아이디어 컨설턴트입니다. 사용자의 질문에 대해 독창적이고 흥미로운 전개를 제안하세요.',
+    knowledge: '',
+    files: []
+  },
+  rightAssistantPersona: {
+    name: '설정 및 고증 담당',
+    instruction: '당신은 웹소설의 세계관 설정과 개연성, 고증을 담당하는 꼼꼼한 편집자입니다. 모순을 지적하고 사실 관계를 확인해 주세요.',
+    knowledge: '',
+    files: []
+  },
+
   apiKey: '',
-  soundVolume: 0.5, // Default volume 50%
+  soundVolume: 0.5,
 });
 
 // Helper to get raw list
@@ -102,7 +120,6 @@ export const saveDocument = (doc: NovelDocument): NovelDocument[] => {
   const index = docs.findIndex((d) => d.id === doc.id);
 
   if (index >= 0) {
-    // STRICT GUARD: Check if the document is in the trash.
     if (docs[index].isDeleted) {
       console.warn(`Blocked save attempt on deleted document: ${doc.id}`);
       return docs; 
@@ -110,9 +127,6 @@ export const saveDocument = (doc: NovelDocument): NovelDocument[] => {
 
     docs[index] = { ...doc, lastModified: Date.now() };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(docs));
-  } else {
-    // Document does not exist (e.g., permanently deleted).
-    // IGNORE this save request.
   }
   
   return docs;
@@ -146,7 +160,6 @@ export const restoreDocument = (id: string): NovelDocument[] => {
 export const permanentlyDeleteDocument = (id: string): NovelDocument[] => {
   const docs = getDocuments();
   const newDocs = docs.filter((d) => d.id !== id);
-  // FORCE UPDATE: Always write to storage to ensure sync
   localStorage.setItem(STORAGE_KEY, JSON.stringify(newDocs));
   return newDocs;
 };
@@ -155,7 +168,6 @@ export const permanentlyDeleteDocument = (id: string): NovelDocument[] => {
 export const emptyTrash = (): NovelDocument[] => {
   const docs = getDocuments();
   const newDocs = docs.filter((d) => !d.isDeleted);
-  // FORCE UPDATE: Always write to storage
   localStorage.setItem(STORAGE_KEY, JSON.stringify(newDocs));
   return newDocs;
 };
@@ -188,6 +200,7 @@ export const getLocalSettings = (): AppSettings | null => {
   }
   
   const parsed = JSON.parse(data);
+  const defaults = getDefaultSettings();
   
   if (!parsed.snippets) {
     parsed.snippets = [];
@@ -198,38 +211,24 @@ export const getLocalSettings = (): AppSettings | null => {
     }));
   }
 
-  if (!parsed.aiModel) {
-    parsed.aiModel = AVAILABLE_MODELS[0].id;
-  }
+  if (!parsed.aiModel) parsed.aiModel = defaults.aiModel;
 
-  // Backwards compatibility for assistantModel
-  if (!parsed.assistantModel) {
-    parsed.assistantModel = AVAILABLE_MODELS[1].id;
-  }
-
-  // Backwards compatibility for assistantFontSize
-  if (!parsed.assistantFontSize) {
-    parsed.assistantFontSize = 14;
-  }
-
-  // Backwards compatibility for soundVolume
-  if (typeof parsed.soundVolume === 'undefined') {
-    parsed.soundVolume = 0.5;
-  }
-
-  if (!parsed.alignment) {
-    parsed.alignment = 'justify';
-  }
-
-  if (typeof parsed.enableIndentation === 'undefined') {
-    parsed.enableIndentation = true;
-  }
+  // Migration: If new fields missing, fill with defaults
+  if (!parsed.leftAssistantModel) parsed.leftAssistantModel = defaults.leftAssistantModel;
+  if (!parsed.rightAssistantModel) parsed.rightAssistantModel = parsed.assistantModel || defaults.rightAssistantModel; // Use old assistantModel if available
   
-  if (typeof parsed.apiKey === 'undefined') {
-    parsed.apiKey = '';
-  }
+  if (!parsed.leftAssistantPersona) parsed.leftAssistantPersona = defaults.leftAssistantPersona;
+  if (!parsed.rightAssistantPersona) parsed.rightAssistantPersona = defaults.rightAssistantPersona;
+
+  if (parsed.leftAssistantPersona && !parsed.leftAssistantPersona.files) parsed.leftAssistantPersona.files = [];
+  if (parsed.rightAssistantPersona && !parsed.rightAssistantPersona.files) parsed.rightAssistantPersona.files = [];
+
+  if (!parsed.assistantFontSize) parsed.assistantFontSize = defaults.assistantFontSize;
+  if (typeof parsed.soundVolume === 'undefined') parsed.soundVolume = defaults.soundVolume;
+  if (!parsed.alignment) parsed.alignment = defaults.alignment;
+  if (typeof parsed.enableIndentation === 'undefined') parsed.enableIndentation = defaults.enableIndentation;
+  if (typeof parsed.apiKey === 'undefined') parsed.apiKey = '';
   
-  // Clean up removed property if it exists in localStorage
   delete parsed.showFormattingMarks;
   
   return parsed;

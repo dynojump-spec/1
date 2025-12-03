@@ -4,27 +4,35 @@
  * It compares two strings and returns HTML string with interactive spans.
  */
 
-// Tokenizes text into words and whitespace/punctuation/newlines
-// Note: computeDiff defines its own tokenizer, so this standalone function is kept for potential future use or reference.
+// Advanced tokenizer that treats newlines as distinct tokens
 const tokenize = (text: string): string[] => {
-  // Split by spaces, newlines, but keep delimiters
-  return text.split(/([\s\S])/).filter(s => s.length > 0);
+  // 1. Split by newlines, keeping them as separators
+  const parts = text.split(/(\n)/);
+  const tokens: string[] = [];
+  
+  for (const part of parts) {
+    if (part === '\n') {
+      tokens.push(part);
+    } else if (part.length > 0) {
+      // 2. Split text by spaces or word boundaries, filtering out empty strings
+      const subparts = part.split(/(\s+|\b)/).filter(s => s !== '');
+      tokens.push(...subparts);
+    }
+  }
+  return tokens;
 };
 
-// Basic diff implementation (simplified Myers or similar approach sufficient for short text chunks)
-// Since we need to run this in browser without large deps, we implement a simple LCS based diff.
+// LCS based diff implementation
 const computeDiff = (original: string, modified: string) => {
-  // Use a simpler tokenizer that splits by whitespace or word boundaries.
-  // This helps group words together but respects punctuation.
-  // Ideally, for CJK, we might want character-level diffs if word splitting fails, 
-  // but this regex is a reasonable compromise for performance.
-  const pattern = /(\s+|\b)/; 
-  const tokens1 = original.split(pattern).filter(s => s !== '');
-  const tokens2 = modified.split(pattern).filter(s => s !== '');
+  const tokens1 = tokenize(original);
+  const tokens2 = tokenize(modified);
 
   // Using a simple DP approach for Longest Common Subsequence
   const n = tokens1.length;
   const m = tokens2.length;
+  // NOTE: For very large texts, this matrix can be heavy.
+  // Optimization: In a real app, use Meyer's O(ND) algorithm.
+  // Given the short chunks usually revised, this O(NM) is acceptable.
   const dp = Array(n + 1).fill(0).map(() => Array(m + 1).fill(0));
 
   for (let i = 1; i <= n; i++) {
@@ -56,75 +64,6 @@ const computeDiff = (original: string, modified: string) => {
   return diffs.reverse();
 };
 
-/**
- * Generates HTML with interactive spans.
- * 
- * Logic:
- * - Equal text is returned as is.
- * - Deleted text is hidden initially (but stored in data-original).
- * - Inserted text is shown wrapped in span (data-modified).
- * 
- * To achieve the toggle effect:
- * The span will hold BOTH the original (deleted) text and the new (inserted) text.
- * Default state: Show Modified.
- * Click state: Show Original.
- * 
- * Complexity: We need to group consecutive inserts/deletes to make a single clickable "change block".
- */
-export const generateInteractiveDiffHtml = (originalText: string, modifiedText: string): string => {
-  const diffs = computeDiff(originalText, modifiedText);
-  let htmlBuilder = '';
-  
-  let pendingDelete = '';
-  let pendingInsert = '';
-
-  const flushPending = () => {
-    if (!pendingDelete && !pendingInsert) return;
-
-    // IMPORTANT: We use 'escapeHtml' for attributes to preserve structure safely.
-    // We use 'formatForDisplay' for the visible content to ensure newlines render as <br>.
-    
-    let spanHtml = '';
-
-    if (pendingInsert && !pendingDelete) {
-        // Pure addition
-        // data-original is empty.
-        spanHtml = `<span class="diff-interactive" contenteditable="false" data-state="modified" data-original="" data-modified="${escapeHtml(pendingInsert)}">${formatForDisplay(pendingInsert)}</span>`;
-    } else if (!pendingInsert && pendingDelete) {
-        // Pure deletion
-        // We render a visible marker '[-]' so the user can see something was deleted and click to restore/view it.
-        // data-modified is empty.
-        // pointer-events-none ensures the click bubbles to the container span
-        const marker = '<span class="text-zinc-500 text-[10px] select-none align-middle mx-0.5 pointer-events-none">[-]</span>';
-        spanHtml = `<span class="diff-interactive" contenteditable="false" data-state="modified" data-original="${escapeHtml(pendingDelete)}" data-modified="">${marker}</span>`; 
-    } else {
-        // Modification (Substitution)
-        spanHtml = `<span class="diff-interactive" contenteditable="false" data-state="modified" data-original="${escapeHtml(pendingDelete)}" data-modified="${escapeHtml(pendingInsert)}">${formatForDisplay(pendingInsert)}</span>`;
-    }
-
-    // Wrap in Zero Width Spaces (\u200B) to provide cursor landing spots and fix vertical navigation jumping bugs
-    htmlBuilder += `\u200B${spanHtml}\u200B`;
-
-    pendingDelete = '';
-    pendingInsert = '';
-  };
-
-  for (const part of diffs) {
-    if (part.type === 'equal') {
-      flushPending();
-      // Equal parts also need newlines converted to <br> for visual consistency
-      htmlBuilder += formatForDisplay(part.value);
-    } else if (part.type === 'delete') {
-      pendingDelete += part.value;
-    } else if (part.type === 'insert') {
-      pendingInsert += part.value;
-    }
-  }
-  flushPending();
-
-  return htmlBuilder;
-};
-
 const escapeHtml = (str: string) => {
   return str
     .replace(/&/g, "&amp;")
@@ -136,5 +75,112 @@ const escapeHtml = (str: string) => {
 
 const formatForDisplay = (str: string) => {
   // First escape HTML entities, then convert newlines to <br>
+  // Note: This is mainly used for text INSIDE a span.
   return escapeHtml(str).replace(/\n/g, "<br>");
+};
+
+/**
+ * Generates HTML with interactive spans.
+ * 
+ * Logic Updated for Line Breaks:
+ * - We strictly respect newlines as paragraph separators (<div>...</div>).
+ * - Interactive spans (green/red) do NOT cross paragraph boundaries to prevent nesting violations.
+ * - An inserted newline becomes a real <div> break, not a <br> inside a span.
+ */
+export const generateInteractiveDiffHtml = (originalText: string, modifiedText: string): string => {
+  const diffs = computeDiff(originalText, modifiedText);
+  let htmlBuilder = '';
+  let lineBuilder = '';
+  
+  // Track grouping state
+  let pendingDelete = '';
+  let pendingInsert = '';
+
+  // Helper to commit accumulated changes to the current line
+  const flushPending = () => {
+    if (!pendingDelete && !pendingInsert) return;
+
+    let spanHtml = '';
+
+    if (pendingInsert && !pendingDelete) {
+        // Pure addition
+        spanHtml = `<span class="diff-interactive" contenteditable="false" data-state="modified" data-original="" data-modified="${escapeHtml(pendingInsert)}">${formatForDisplay(pendingInsert)}</span>`;
+    } else if (!pendingInsert && pendingDelete) {
+        // Pure deletion
+        const marker = '<span class="text-zinc-500 text-[10px] select-none align-baseline mx-0.5 pointer-events-none">[-]</span>';
+        spanHtml = `<span class="diff-interactive" contenteditable="false" data-state="modified" data-original="${escapeHtml(pendingDelete)}" data-modified="">${marker}</span>`; 
+    } else {
+        // Modification (Substitution)
+        spanHtml = `<span class="diff-interactive" contenteditable="false" data-state="modified" data-original="${escapeHtml(pendingDelete)}" data-modified="${escapeHtml(pendingInsert)}">${formatForDisplay(pendingInsert)}</span>`;
+    }
+
+    // Wrap in Zero Width Spaces (\u200B) for cursor navigation
+    lineBuilder += `\u200B${spanHtml}\u200B`;
+
+    pendingDelete = '';
+    pendingInsert = '';
+  };
+
+  // Helper to append text to current line
+  // If text contains newlines, it closes the current <div> and starts a new one.
+  const appendText = (text: string) => {
+    const parts = text.split('\n');
+    
+    // NOTE: We do NOT pop the last empty element. 
+    // If text is "\n", parts is ["", ""].
+    // i=0: append "". 
+    // i=1: newline found. Close div. Start new div. Append "".
+    // This preserves explicit newlines passed from the diff engine.
+
+    for (let i = 0; i < parts.length; i++) {
+        const part = parts[i];
+        if (i > 0) {
+            // Newline encountered: Close current div (implicitly) and start new one
+            htmlBuilder += `<div>${lineBuilder || '<br>'}</div>`; // Use <br> if empty line
+            lineBuilder = ''; 
+        }
+        
+        if (part) {
+           lineBuilder += formatForDisplay(part);
+        }
+    }
+  };
+
+  for (const part of diffs) {
+    if (part.type === 'equal') {
+      flushPending();
+      appendText(part.value);
+    } else if (part.type === 'delete') {
+       // Accumulate deletions.
+       // Note: If deletions contain newlines, we keep them in 'data-original'.
+       // Visually it will just be a [-] marker.
+       pendingDelete += part.value;
+    } else if (part.type === 'insert') {
+       // IMPORTANT: If we are inserting a newline, we MUST treat it as a structural break.
+       // We cannot put a <div> break inside a <span>.
+       if (part.value === '\n') {
+          flushPending(); // Close any preceding interactive span
+          appendText(part.value); // Insert the real structural break (</div><div>)
+       } else {
+          // Normal text insertion
+          pendingInsert += part.value;
+       }
+    }
+  }
+  flushPending();
+
+  // Handle remaining line buffer
+  if (lineBuilder) {
+      if (htmlBuilder) {
+          htmlBuilder += `<div>${lineBuilder}</div>`;
+      } else {
+          // Single line content
+          htmlBuilder += lineBuilder;
+      }
+  } else if (!htmlBuilder && !lineBuilder) {
+      // Empty content
+      htmlBuilder = ''; 
+  }
+
+  return htmlBuilder;
 };

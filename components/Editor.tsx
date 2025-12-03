@@ -51,23 +51,30 @@ const playSuccessSound = (volume: number = 0.5) => {
   } catch (error) { /* ignore */ }
 };
 
-// Helper to extract text preserving line breaks using browser rendering
+// Helper to extract text preserving line breaks using robust HTML parsing
+// Replaces unreliable innerText which fails on hidden/detached nodes
 const fragmentToText = (fragment: DocumentFragment): string => {
   const tempDiv = document.createElement('div');
   tempDiv.appendChild(fragment.cloneNode(true));
   
-  // Must append to document to get correct innerText with styles/layout applied
-  // We hide it off-screen to avoid visual glitch
-  tempDiv.style.position = 'fixed';
-  tempDiv.style.left = '-9999px';
-  tempDiv.style.whiteSpace = 'pre-wrap';
-  document.body.appendChild(tempDiv);
+  let html = tempDiv.innerHTML;
   
-  // Strip Zero Width Spaces (\u200B) to ensure clean text for AI processing
-  const text = tempDiv.innerText.replace(/\u200B/g, '');
+  // Explicitly replace block element closings with newlines to preserve structure
+  html = html.replace(/<\/div>/gi, '\n');
+  html = html.replace(/<\/p>/gi, '\n');
+  html = html.replace(/<\/li>/gi, '\n');
+  html = html.replace(/<\/h[1-6]>/gi, '\n');
+  html = html.replace(/<br\s*\/?>/gi, '\n');
   
-  document.body.removeChild(tempDiv);
-  return text;
+  // Use a textarea to decode HTML entities (e.g., &lt; -> <) and strip tags
+  const decoder = document.createElement('textarea');
+  decoder.innerHTML = html.replace(/<[^>]+>/g, '');
+  let text = decoder.value;
+  
+  // Clean up
+  text = text.replace(/\u200B/g, ''); // Remove zero-width spaces
+  
+  return text.trim();
 };
 
 const placeCaretAtEnd = (el: HTMLElement) => {
@@ -763,20 +770,26 @@ const Editor = forwardRef<EditorHandle, Props>(({ content, onChange, settings, r
         target.setAttribute('data-state', 'original');
         if (!original) {
            // Pure Insertion: Original is empty. Show placeholder.
-           target.innerHTML = '<span class="text-zinc-500 text-[10px] select-none align-middle mx-1 pointer-events-none">(추가됨)</span>';
+           // Removed 'align-middle' to prevent line-height jumps
+           target.innerHTML = '<span class="text-zinc-500 text-[10px] select-none align-baseline mx-0.5 pointer-events-none">(추가됨)</span>';
         } else {
            // Substitution: Show original text
-           target.innerHTML = escapeHtmlForDisplay(original).replace(/\n/g, '<br>');
+           // Trim trailing newline to prevent double line-break at end of block
+           const textToShow = original.replace(/\n+$/, '');
+           target.innerHTML = escapeHtmlForDisplay(textToShow).replace(/\n/g, '<br>');
         }
       } else {
         // Switch back to Modified (Blue)
         target.setAttribute('data-state', 'modified');
         if (!modified) {
            // Pure Deletion: Modified is empty (gone). Show marker.
-           target.innerHTML = '<span class="text-zinc-500 text-[10px] select-none align-middle mx-0.5 pointer-events-none">[-]</span>';
+           // Removed 'align-middle' to prevent line-height jumps
+           target.innerHTML = '<span class="text-zinc-500 text-[10px] select-none align-baseline mx-0.5 pointer-events-none">[-]</span>';
         } else {
            // Substitution/Insertion: Show new text
-           target.innerHTML = escapeHtmlForDisplay(modified).replace(/\n/g, '<br>');
+           // Trim trailing newline to prevent double line-break at end of block
+           const textToShow = modified.replace(/\n+$/, '');
+           target.innerHTML = escapeHtmlForDisplay(textToShow).replace(/\n/g, '<br>');
         }
       }
       handleInput();

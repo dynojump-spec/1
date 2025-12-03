@@ -1,5 +1,6 @@
+
 import React, { useState, useEffect, useRef } from 'react';
-import { Menu, Settings, Download, CheckCircle2, AlertCircle, Search, X, ArrowDown, ArrowUp, Replace, CopyCheck, Loader2, ListFilter, Bot, MessageSquarePlus } from 'lucide-react';
+import { Menu, Settings, Download, CheckCircle2, AlertCircle, Search, X, ArrowDown, ArrowUp, Replace, CopyCheck, Loader2, ListFilter, Bot, MessageSquarePlus, PanelLeft, PanelRight } from 'lucide-react';
 import { NovelDocument, AppSettings, FontType, AVAILABLE_MODELS } from './types';
 import * as StorageService from './services/storageService';
 import Sidebar from './components/Sidebar';
@@ -8,7 +9,9 @@ import SettingsModal from './components/SettingsModal';
 import Assistant from './components/Assistant';
 
 const SIDEBAR_STORAGE_KEY = 'novelcraft_sidebar_open';
-const ASSISTANT_STORAGE_KEY = 'novelcraft_assistant_open';
+// Updated storage keys for panel visibility
+const ASSISTANT_LEFT_OPEN_KEY = 'novelcraft_assistant_left_open';
+const ASSISTANT_RIGHT_OPEN_KEY = 'novelcraft_assistant_right_open';
 
 const App: React.FC = () => {
   // State
@@ -21,9 +24,24 @@ const App: React.FC = () => {
     return typeof window !== 'undefined' ? window.innerWidth >= 768 : false;
   });
 
-  const [isAssistantOpen, setIsAssistantOpen] = useState(false);
-  const [editorWidthPercent, setEditorWidthPercent] = useState(50); // Default 50% split
-  const isResizingRef = useRef(false);
+  // State for Dual Assistants
+  const [isLeftAssistantOpen, setIsLeftAssistantOpen] = useState(() => {
+    const saved = localStorage.getItem(ASSISTANT_LEFT_OPEN_KEY);
+    return saved !== null ? JSON.parse(saved) : false;
+  });
+
+  const [isRightAssistantOpen, setIsRightAssistantOpen] = useState(() => {
+    const saved = localStorage.getItem(ASSISTANT_RIGHT_OPEN_KEY);
+    // Default to false for fresh load, or true if previously saved
+    return saved !== null ? JSON.parse(saved) : false;
+  });
+
+  // Panel Widths (Percentage)
+  const [leftPanelWidth, setLeftPanelWidth] = useState(25);
+  const [rightPanelWidth, setRightPanelWidth] = useState(25);
+  
+  const isResizingLeftRef = useRef(false);
+  const isResizingRightRef = useRef(false);
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'unsaved'>('saved');
@@ -56,6 +74,14 @@ const App: React.FC = () => {
   }, [isSidebarOpen]);
 
   useEffect(() => {
+    localStorage.setItem(ASSISTANT_LEFT_OPEN_KEY, JSON.stringify(isLeftAssistantOpen));
+  }, [isLeftAssistantOpen]);
+
+  useEffect(() => {
+    localStorage.setItem(ASSISTANT_RIGHT_OPEN_KEY, JSON.stringify(isRightAssistantOpen));
+  }, [isRightAssistantOpen]);
+
+  useEffect(() => {
     const docs = StorageService.getDocuments();
     setDocuments(docs);
     
@@ -74,48 +100,93 @@ const App: React.FC = () => {
   }, [settings]);
 
   // --- SPLIT PANE RESIZING LOGIC ---
-  const startResizing = (e: React.MouseEvent) => {
+  const startResizingLeft = (e: React.MouseEvent) => {
     e.preventDefault();
-    isResizingRef.current = true;
+    isResizingLeftRef.current = true;
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', stopResizing);
     document.body.style.cursor = 'col-resize';
-    document.body.style.userSelect = 'none'; // Prevent text selection while dragging
+    document.body.style.userSelect = 'none';
+  };
+
+  const startResizingRight = (e: React.MouseEvent) => {
+    e.preventDefault();
+    isResizingRightRef.current = true;
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', stopResizing);
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
   };
 
   const handleMouseMove = (e: MouseEvent) => {
-    if (!isResizingRef.current) return;
+    if (!isResizingLeftRef.current && !isResizingRightRef.current) return;
     
-    // Calculate percentage based on window width (or main container width)
-    // We assume the sidebar is either fixed width or overlay. 
-    // If sidebar is overlay (mobile) or pushed (desktop), we should calculate relative to the main content area.
-    // For simplicity, let's use window width minus sidebar if visible on desktop.
-    
+    // Calculate total available width for the workspace (excluding sidebar)
     let containerWidth = window.innerWidth;
     let offset = 0;
     
-    // Adjust if sidebar is taking space (md:ml-64)
     if (isSidebarOpen && window.innerWidth >= 768) {
       containerWidth -= 256; // 64 * 4px = 256px
       offset = 256;
     }
     
     const relativeX = e.clientX - offset;
-    let newPercent = (relativeX / containerWidth) * 100;
+    const minWidthPercent = 5; // Minimum 5% width
+    const minEditorPercent = 10; // Keep at least 10% for editor
     
-    // Constraints (Min 20%, Max 80%)
-    if (newPercent < 20) newPercent = 20;
-    if (newPercent > 80) newPercent = 80;
-    
-    setEditorWidthPercent(newPercent);
+    if (isResizingLeftRef.current) {
+      // Resizing Left Panel
+      let newPercent = (relativeX / containerWidth) * 100;
+      
+      // Constraints
+      if (newPercent < minWidthPercent) newPercent = minWidthPercent;
+      
+      // Dynamic Max: Ensure enough space for Right Panel (if open) and Editor
+      let maxPercent = 100 - minEditorPercent;
+      if (isRightAssistantOpen) {
+          maxPercent -= rightPanelWidth;
+      }
+      
+      if (newPercent > maxPercent) newPercent = maxPercent;
+      
+      setLeftPanelWidth(newPercent);
+
+    } else if (isResizingRightRef.current) {
+      // Resizing Right Panel
+      // The splitter is at "100% - RightWidth".
+      // MouseX represents the left edge of the right panel.
+      let newPercent = ((containerWidth - relativeX) / containerWidth) * 100;
+      
+      // Constraints
+      if (newPercent < minWidthPercent) newPercent = minWidthPercent;
+      
+      // Dynamic Max
+      let maxPercent = 100 - minEditorPercent;
+      if (isLeftAssistantOpen) {
+          maxPercent -= leftPanelWidth;
+      }
+      
+      if (newPercent > maxPercent) newPercent = maxPercent;
+      
+      setRightPanelWidth(newPercent);
+    }
   };
 
   const stopResizing = () => {
-    isResizingRef.current = false;
+    isResizingLeftRef.current = false;
+    isResizingRightRef.current = false;
     document.removeEventListener('mousemove', handleMouseMove);
     document.removeEventListener('mouseup', stopResizing);
     document.body.style.cursor = '';
     document.body.style.userSelect = '';
+  };
+
+  // Calculate Editor Width
+  const getEditorWidth = () => {
+    let width = 100;
+    if (isLeftAssistantOpen) width -= leftPanelWidth;
+    if (isRightAssistantOpen) width -= rightPanelWidth;
+    return width < 0 ? 0 : width;
   };
 
   // --- AUTO SAVE LOGIC ---
@@ -262,15 +333,49 @@ const App: React.FC = () => {
 
   const handleExportTxt = () => {
     if (!currentDoc) return;
+    
+    // Create a temporary container to manipulate the DOM for cleanup
     const tempDiv = document.createElement('div');
     tempDiv.innerHTML = currentDoc.content;
-    tempDiv.style.position = 'fixed';
-    tempDiv.style.left = '-9999px';
-    tempDiv.style.whiteSpace = 'pre-wrap'; 
-    document.body.appendChild(tempDiv);
-    const textContent = tempDiv.innerText;
-    document.body.removeChild(tempDiv);
-    const blob = new Blob([textContent], { type: 'text/plain;charset=utf-8' });
+
+    // 0. Clean up Diff Markers
+    const diffNodes = tempDiv.querySelectorAll('.diff-interactive');
+    diffNodes.forEach(node => {
+        const state = node.getAttribute('data-state');
+        const original = node.getAttribute('data-original');
+        const modified = node.getAttribute('data-modified');
+
+        // Case 1: Modified View - Pure Deletion -> Shows [-]
+        if (state === 'modified' && (!modified || modified === '')) {
+            node.remove();
+            return;
+        }
+
+        // Case 2: Original View - Pure Insertion -> Shows (추가됨)
+        if (state === 'original' && (!original || original === '')) {
+            node.remove();
+            return;
+        }
+    });
+
+    let html = tempDiv.innerHTML;
+    // 1. Replace block closing tags with newlines
+    html = html.replace(/<\/div>/gi, '\n');
+    html = html.replace(/<\/p>/gi, '\n');
+    html = html.replace(/<\/h[1-6]>/gi, '\n');
+    html = html.replace(/<\/li>/gi, '\n');
+    // 2. Replace <br> with newlines
+    html = html.replace(/<br\s*\/?>/gi, '\n');
+    // 3. Strip all HTML tags
+    let text = html.replace(/<[^>]+>/g, '');
+    // 4. Decode HTML entities
+    const textarea = document.createElement('textarea');
+    textarea.innerHTML = text;
+    text = textarea.value;
+    // 5. Normalize spacing
+    text = text.replace(/\n{3,}/g, '\n\n');
+    
+    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
@@ -427,13 +532,25 @@ const App: React.FC = () => {
                   <button onClick={() => setIsSearchOpen(!isSearchOpen)} className={`p-2 rounded transition-colors ${isSearchOpen ? 'text-blue-400 bg-blue-900/20' : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800'}`}>
                     <Search size={20} />
                   </button>
+                  
+                  {/* Left Assistant Toggle */}
                   <button 
-                    onClick={() => setIsAssistantOpen(!isAssistantOpen)} 
-                    className={`p-2 rounded transition-colors ${isAssistantOpen ? 'text-purple-400 bg-purple-900/20' : 'text-zinc-400 hover:text-purple-400 hover:bg-zinc-800'}`}
-                    title="AI 어시스턴트 (질문/채팅)"
+                    onClick={() => setIsLeftAssistantOpen(!isLeftAssistantOpen)} 
+                    className={`p-2 rounded transition-colors flex items-center gap-0.5 ${isLeftAssistantOpen ? 'text-purple-400 bg-purple-900/20' : 'text-zinc-400 hover:text-purple-400 hover:bg-zinc-800'}`}
+                    title="왼쪽 AI 어시스턴트 열기"
                   >
-                    <Bot size={20} />
+                    <PanelLeft size={20} />
                   </button>
+
+                  {/* Right Assistant Toggle */}
+                  <button 
+                    onClick={() => setIsRightAssistantOpen(!isRightAssistantOpen)} 
+                    className={`p-2 rounded transition-colors flex items-center gap-0.5 ${isRightAssistantOpen ? 'text-purple-400 bg-purple-900/20' : 'text-zinc-400 hover:text-purple-400 hover:bg-zinc-800'}`}
+                    title="오른쪽 AI 어시스턴트 열기"
+                  >
+                     <PanelRight size={20} />
+                  </button>
+
                   <button onClick={handleExportTxt} className="p-2 text-zinc-400 hover:text-blue-400 hover:bg-zinc-800 rounded">
                     <Download size={20} />
                   </button>
@@ -446,12 +563,38 @@ const App: React.FC = () => {
           </div>
         </header>
 
-        {/* MAIN CONTENT AREA: Split Pane or Single View */}
+        {/* MAIN CONTENT AREA: 3-Pane Layout (Left Assistant - Editor - Right Assistant) */}
         <div className="flex-1 flex overflow-hidden w-full relative">
-          {/* LEFT PANE: Editor */}
+          
+          {/* LEFT PANE: Assistant (Left) */}
+          {isLeftAssistantOpen && (
+             <>
+               <div 
+                  className="flex flex-col h-full overflow-hidden z-10"
+                  style={{ width: `${leftPanelWidth}%` }}
+               >
+                 <Assistant 
+                   isOpen={isLeftAssistantOpen} 
+                   onClose={() => setIsLeftAssistantOpen(false)}
+                   settings={settings}
+                   storageId="left" // Distinct storage key
+                 />
+               </div>
+               
+               {/* Left Resizer */}
+               <div
+                  className="w-1.5 hover:bg-blue-500/50 cursor-col-resize flex items-center justify-center z-20 transition-colors group"
+                  onMouseDown={startResizingLeft}
+               >
+                 <div className="h-8 w-0.5 bg-zinc-700 group-hover:bg-blue-400 rounded-full transition-colors"></div>
+               </div>
+             </>
+          )}
+
+          {/* MIDDLE PANE: Editor */}
           <div 
             className="flex flex-col h-full overflow-hidden transition-all duration-75"
-            style={{ width: isAssistantOpen ? `${editorWidthPercent}%` : '100%' }}
+            style={{ width: `${getEditorWidth()}%` }}
           >
              <div className="flex-1 overflow-y-auto overflow-x-hidden scrollbar-thin scrollbar-thumb-zinc-700 scrollbar-track-transparent">
                {currentDoc ? (
@@ -478,26 +621,26 @@ const App: React.FC = () => {
              </div>
           </div>
 
-          {/* SPLITTER & RIGHT PANE: Assistant */}
-          {isAssistantOpen && (
+          {/* RIGHT PANE: Assistant (Right) */}
+          {isRightAssistantOpen && (
             <>
-              {/* Resizer Handle */}
+              {/* Right Resizer */}
               <div
-                className="w-1 bg-zinc-800 hover:bg-blue-500 cursor-col-resize flex items-center justify-center z-10 transition-colors"
-                onMouseDown={startResizing}
+                className="w-1.5 hover:bg-blue-500/50 cursor-col-resize flex items-center justify-center z-20 transition-colors group"
+                onMouseDown={startResizingRight}
               >
-                 <div className="h-8 w-1 bg-zinc-600 rounded-full"></div>
+                 <div className="h-8 w-0.5 bg-zinc-700 group-hover:bg-blue-400 rounded-full transition-colors"></div>
               </div>
 
-              {/* RIGHT PANE: Assistant */}
               <div 
-                className="flex flex-col h-full overflow-hidden"
-                style={{ width: `${100 - editorWidthPercent}%` }}
+                className="flex flex-col h-full overflow-hidden z-10"
+                style={{ width: `${rightPanelWidth}%` }}
               >
                 <Assistant 
-                  isOpen={isAssistantOpen} 
-                  onClose={() => setIsAssistantOpen(false)}
+                  isOpen={isRightAssistantOpen} 
+                  onClose={() => setIsRightAssistantOpen(false)}
                   settings={settings}
+                  storageId="default" // "default" maintains original chat history
                 />
               </div>
             </>
