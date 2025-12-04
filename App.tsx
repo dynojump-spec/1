@@ -147,6 +147,7 @@ const App: React.FC = () => {
           maxPercent -= rightPanelWidth;
       }
       
+      if (newPercent > 90) newPercent = 90; // Allow up to 90% if possible
       if (newPercent > maxPercent) newPercent = maxPercent;
       
       setLeftPanelWidth(newPercent);
@@ -166,6 +167,7 @@ const App: React.FC = () => {
           maxPercent -= leftPanelWidth;
       }
       
+      if (newPercent > 90) newPercent = 90; // Allow up to 90%
       if (newPercent > maxPercent) newPercent = maxPercent;
       
       setRightPanelWidth(newPercent);

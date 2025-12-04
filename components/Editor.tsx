@@ -1,6 +1,6 @@
 
 import React, { useRef, useEffect, useState, useCallback, useImperativeHandle, forwardRef, useMemo, useLayoutEffect } from 'react';
-import { Loader2, Wand2, Check, MessageSquare, RefreshCw, Trash2, Zap, Heart, Eye, Languages } from 'lucide-react';
+import { Loader2, Wand2, Check, MessageSquare, RefreshCw, Trash2, Zap, Heart, Eye, Languages, Scissors, Mountain } from 'lucide-react';
 import { AppSettings, FontType, AIRevisionMode, SnippetType } from '../types';
 import { generateInteractiveDiffHtml } from '../utils/diffEngine';
 import { generateRevision } from '../services/geminiService';
@@ -878,7 +878,7 @@ const Editor = forwardRef<EditorHandle, Props>(({ content, onChange, settings, r
           style={{ top: selectionRect.top, left: selectionRect.left }}
           onMouseDown={handleToolbarMouseDown} 
         >
-          {/* Primary: Grammar & Polish */}
+          {/* Primary: Grammar & Polish & Compact */}
           <button 
             onClick={() => runAIRevision(AIRevisionMode.GRAMMAR)} 
             className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-bold text-zinc-300 hover:text-blue-400 hover:bg-zinc-800 rounded-md transition-colors whitespace-nowrap"
@@ -897,11 +897,20 @@ const Editor = forwardRef<EditorHandle, Props>(({ content, onChange, settings, r
             <span>윤문</span>
           </button>
 
+          <button 
+            onClick={() => runAIRevision(AIRevisionMode.COMPACT)} 
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-bold text-zinc-300 hover:text-teal-400 hover:bg-zinc-800 rounded-md transition-colors whitespace-nowrap"
+            title="벽돌체 다듬기 (간결화)"
+          >
+            <Scissors size={14} />
+            <span>압축</span>
+          </button>
+
           <div className="w-px h-4 bg-zinc-700 mx-1"></div>
 
           {/* Secondary: Icons Only */}
-          <button onClick={() => runAIRevision(AIRevisionMode.READABILITY)} className="p-1.5 text-zinc-400 hover:text-green-400 hover:bg-zinc-800 rounded-md transition-colors" title="가독성 개선">
-            <Eye size={16} />
+          <button onClick={() => runAIRevision(AIRevisionMode.SCENERY)} className="p-1.5 text-zinc-400 hover:text-indigo-400 hover:bg-zinc-800 rounded-md transition-colors" title="배경 묘사 생성">
+            <Mountain size={16} />
           </button>
           <button onClick={() => runAIRevision(AIRevisionMode.DIALOGUE)} className="p-1.5 text-zinc-400 hover:text-yellow-400 hover:bg-zinc-800 rounded-md transition-colors" title="대사 톤앤매너">
             <MessageSquare size={16} />

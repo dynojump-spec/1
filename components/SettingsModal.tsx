@@ -14,11 +14,12 @@ interface Props {
 const AI_MODE_LABELS: Record<string, string> = {
   [AIRevisionMode.GRAMMAR]: '맞춤법/교정',
   [AIRevisionMode.POLISH]: '윤문 (문장 다듬기)',
-  [AIRevisionMode.READABILITY]: '가독성 개선',
   [AIRevisionMode.ACTION]: '전투/액션 묘사',
   [AIRevisionMode.EMOTIONAL]: '감정선 강화',
   [AIRevisionMode.DIALOGUE]: '대사 톤앤매너',
   [AIRevisionMode.HANJA]: '한자 변환 (화룡(火龍))',
+  [AIRevisionMode.COMPACT]: '벽돌체 다듬기 (간결/직관)',
+  [AIRevisionMode.SCENERY]: '배경 묘사 생성 (150-300자)',
 };
 
 const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUpdate }) => {

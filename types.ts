@@ -71,12 +71,13 @@ export const AVAILABLE_MODELS = [
 
 export enum AIRevisionMode {
   GRAMMAR = 'grammar',
-  READABILITY = 'readability',
   ACTION = 'action',
   DIALOGUE = 'dialogue',
   EMOTIONAL = 'emotional',
   POLISH = 'polish',
   HANJA = 'hanja',
+  COMPACT = 'compact', // New: Brick wall fixer
+  SCENERY = 'scenery', // New: Background description
 }
 
 export interface DiffToken {

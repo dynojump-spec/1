@@ -23,8 +23,6 @@ const getPromptForMode = (mode: AIRevisionMode, text: string): string => {
   switch (mode) {
     case AIRevisionMode.GRAMMAR:
       return `다음 텍스트의 맞춤법, 띄어쓰기, 오탈자를 교정하세요. 문체나 톤은 변경하지 말고 오류만 수정하세요. ${formatNote}\n\n텍스트:\n${text}`;
-    case AIRevisionMode.READABILITY:
-      return `다음 텍스트의 문장을 더 매끄럽고 읽기 쉽게 다듬으세요(가독성 개선). 원문의 의미는 유지하되 문장 구조를 개선하세요. ${formatNote}\n\n텍스트:\n${text}`;
     case AIRevisionMode.ACTION:
       return `다음 텍스트의 전투 및 액션 장면을 더 역동적이고 박진감 넘치게 묘사하세요. 타격감, 속도감, 움직임을 생생하게 표현하세요. (반드시 한국어로 작성) ${formatNote}\n\n텍스트:\n${text}`;
     case AIRevisionMode.DIALOGUE:
@@ -32,7 +30,11 @@ const getPromptForMode = (mode: AIRevisionMode, text: string): string => {
     case AIRevisionMode.EMOTIONAL:
       return `다음 텍스트의 감정 묘사를 더 깊이 있고 호소력 짙게 수정하세요. 인물의 내면 심리와 분위기를 감각적으로 표현하세요. ${formatNote}\n\n텍스트:\n${text}`;
     case AIRevisionMode.POLISH:
-      return `다음 텍스트를 더 세련되고 기품 있는 문체로 윤문(다듬기)하세요. 단어 선택을 고급스럽게 하고 문장의 리듬감을 살리세요. ${formatNote}\n\n텍스트:\n${text}`;
+      return `다음 텍스트를 **세련되고 기품 있는 문체**로 윤문(다듬기)하세요.
+      - **핵심**: 불필요한 수식과 군더더기를 과감히 제거하여 문장을 **압축**하세요.
+      - **분량**: 결과물의 분량이 원문보다 **늘어나지 않게** 하세요. (원문과 비슷하거나 더 짧게 유지)
+      - 단어 선택을 고급스럽게 하되, 호흡을 정돈하여 간결하고 임팩트 있는 문장을 만드세요.
+      ${formatNote}\n\n텍스트:\n${text}`;
     case AIRevisionMode.HANJA:
       return `Identify Sino-Korean words (Hanja-eo) in the following text and append their Chinese characters in parentheses.
       Format: Word -> Word(Hanja)
@@ -42,6 +44,17 @@ const getPromptForMode = (mode: AIRevisionMode, text: string): string => {
       - Do NOT convert native Korean words.
       - Keep the rest of the text exactly as is in Korean.
       ${formatNote}\n\nText:\n${text}`;
+    case AIRevisionMode.COMPACT:
+      return `다음 텍스트(일명 벽돌체)의 맥락과 의도를 파악하여, 가독성이 좋고 직관적인 문장으로 완전히 재구성하세요. 
+      - 불필요한 수식어를 줄이고 문장을 간결하게 만들어, 기존 5~6줄 분량이라면 4~5줄 내외로 줄이되 핵심 내용은 유지하세요.
+      - 꽉 막힌 문장을 시원하게 뚫어주고 읽기 편하게 만드세요.
+      ${formatNote}\n\n텍스트:\n${text}`;
+    case AIRevisionMode.SCENERY:
+      return `다음 텍스트(지시문 또는 키워드)를 바탕으로 소설의 배경 묘사를 작성하세요. 
+      - 분량은 공백 포함 약 150~300자 내외로 작성하세요.
+      - 시각, 청각, 후각 등 감각적인 심상을 활용하여 분위기를 생생하게 살리세요.
+      - 문맥에 자연스럽게 녹아들도록 작성하세요.
+      ${formatNote}\n\n텍스트:\n${text}`;
     default:
       return `다음 텍스트를 수정하세요. ${formatNote}\n\n텍스트:\n${text}`;
   }
