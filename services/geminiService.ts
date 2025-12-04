@@ -68,7 +68,7 @@ async function retryWithBackoff<T>(fn: () => Promise<T>, retries = 3, delay = 10
     const status = error?.status || error?.code;
     
     // Do not retry if aborted
-    if (msg.includes('aborted') || msg.includes('cancelled')) {
+    if (msg.includes('aborted') || msg.includes('cancelled') || msg.includes('Operation cancelled')) {
       throw error;
     }
     
@@ -126,7 +126,12 @@ export const generateRevision = async (
     result = result.replace(/^```(?:html|text)?\s*/i, '').replace(/\s*```$/, '').trim();
     
     return result; 
-  } catch (error) {
+  } catch (error: any) {
+    const msg = error?.message || '';
+    // Suppress logging for cancellation
+    if (msg.includes("Operation cancelled") || msg.includes("aborted") || error?.name === 'AbortError') {
+       throw error;
+    }
     console.error("Gemini API Error:", error);
     throw error;
   }

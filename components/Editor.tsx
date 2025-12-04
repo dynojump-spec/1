@@ -509,7 +509,7 @@ const Editor = forwardRef<EditorHandle, Props>(({ content, onChange, settings, r
       const msg = error instanceof Error ? error.message : "Unknown error";
       
       // Ignore Abort errors (user cancelled)
-      if (msg === "Operation cancelled" || (error instanceof Error && error.name === 'AbortError')) {
+      if (msg.includes("Operation cancelled") || msg.includes("aborted") || (error instanceof Error && error.name === 'AbortError')) {
          console.log("AI Operation Cancelled by user");
       } else {
          console.error(error);
