@@ -1,7 +1,8 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Plus, Trash2, Keyboard, Command, Type, Palette, Cpu, Download, Upload, AlignJustify, AlignLeft, Wand2, Key, Eye, EyeOff, MessageSquare, Volume2, Indent, Bot, PanelLeft, PanelRight, BookOpen, UserCircle, PenTool, FileUp, FileText } from 'lucide-react';
+import { X, Plus, Trash2, Keyboard, Command, Type, Palette, Cpu, Download, Upload, AlignJustify, AlignLeft, Wand2, Key, Eye, EyeOff, MessageSquare, Volume2, Indent, Bot, PanelLeft, PanelRight, BookOpen, UserCircle, PenTool, FileUp, FileText, RotateCcw } from 'lucide-react';
 import { AppSettings, FontType, Snippet, SnippetType, AVAILABLE_MODELS, AIRevisionMode, KnowledgeFile } from '../types';
+import { getDefaultSettings } from '../services/storageService';
 import { v4 as uuidv4 } from 'uuid';
 
 interface Props {
@@ -249,6 +250,17 @@ const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUpdate })
       if (!window.confirm("이 참조 파일을 삭제하시겠습니까?")) return;
       const currentFiles = getAssistantConfig().persona?.files || [];
       updateAssistantConfig('files', currentFiles.filter(f => f.id !== id));
+  };
+
+  const handleReset = () => {
+    if (window.confirm("모든 설정을 기본값으로 초기화하시겠습니까?\n단축키, AI 모델, 페르소나 설정 등이 모두 초기 상태로 되돌아갑니다.")) {
+      const defaults = getDefaultSettings();
+      // Optionally preserve API key if desired, but "reset to default" usually means clean slate.
+      // Uncomment below to preserve API key:
+      // if (settings.apiKey) defaults.apiKey = settings.apiKey;
+      onUpdate(defaults);
+      alert("설정이 초기화되었습니다.");
+    }
   };
 
   return (
@@ -821,7 +833,13 @@ const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUpdate })
           )}
         </div>
 
-        <div className="mt-6 pt-4 border-t border-zinc-800 flex justify-end shrink-0">
+        <div className="mt-6 pt-4 border-t border-zinc-800 flex justify-between shrink-0">
+          <button
+            onClick={handleReset}
+            className="px-4 py-2 text-sm font-medium text-red-400 hover:text-red-300 hover:bg-red-900/20 rounded flex items-center gap-2 transition-colors"
+          >
+            <RotateCcw size={16} /> 설정 초기화 (Reset)
+          </button>
           <button
             onClick={onClose}
             className="px-4 py-2 text-sm font-medium text-zinc-900 bg-zinc-100 rounded hover:bg-zinc-200"
