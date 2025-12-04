@@ -489,15 +489,15 @@ const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUpdate })
                   <input
                     type="range"
                     min="0"
-                    max="1"
-                    step="0.05"
+                    max="3"
+                    step="0.1"
                     value={settings.soundVolume ?? 0.5}
                     onChange={(e) => onUpdate({ ...settings, soundVolume: parseFloat(e.target.value) })}
                     className="w-full h-2 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-green-500"
                   />
                   <div className="flex justify-between mt-1 text-xs text-zinc-500">
                     <span>Mute</span>
-                    <span>100%</span>
+                    <span>300%</span>
                   </div>
                 </div>
               </div>
