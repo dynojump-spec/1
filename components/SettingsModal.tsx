@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Plus, Trash2, Keyboard, Command, Type, Palette, Cpu, Download, Upload, AlignJustify, AlignLeft, Wand2, Key, Eye, EyeOff, MessageSquare, Volume2, Indent, Bot, PanelLeft, PanelRight, BookOpen, UserCircle, PenTool, FileUp, FileText, RotateCcw } from 'lucide-react';
+import { X, Plus, Trash2, Keyboard, Command, Type, Palette, Cpu, Download, Upload, AlignJustify, AlignLeft, Wand2, Key, Eye, EyeOff, MessageSquare, Volume2, Indent, Bot, PanelLeft, PanelRight, BookOpen, UserCircle, PenTool, FileUp, FileText, RotateCcw, ExternalLink } from 'lucide-react';
 import { AppSettings, FontType, Snippet, SnippetType, AVAILABLE_MODELS, AIRevisionMode, KnowledgeFile } from '../types';
 import { getDefaultSettings } from '../services/storageService';
 import { v4 as uuidv4 } from 'uuid';
@@ -219,9 +219,6 @@ const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUpdate })
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Size limit check removed as requested.
-    // WARNING: Large files may exceed browser LocalStorage limits (approx 5-10MB).
-
     const reader = new FileReader();
     reader.onload = (event) => {
       const content = event.target?.result as string;
@@ -253,13 +250,22 @@ const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUpdate })
   };
 
   const handleReset = () => {
-    if (window.confirm("모든 설정을 기본값으로 초기화하시겠습니까?\n단축키, AI 모델, 페르소나 설정 등이 모두 초기 상태로 되돌아갑니다.")) {
+    if (window.confirm("글꼴, 소리 등 일반 설정을 초기화하시겠습니까?\n\n※ 사용자가 설정한 '페르소나', '단축키', 'API 키'는 삭제되지 않고 유지됩니다.")) {
       const defaults = getDefaultSettings();
-      // Optionally preserve API key if desired, but "reset to default" usually means clean slate.
-      // Uncomment below to preserve API key:
-      // if (settings.apiKey) defaults.apiKey = settings.apiKey;
-      onUpdate(defaults);
-      alert("설정이 초기화되었습니다.");
+      
+      const newSettings: AppSettings = {
+        ...defaults,
+        // Preserve user data as requested
+        apiKey: settings.apiKey,
+        snippets: settings.snippets,
+        leftAssistantModel: settings.leftAssistantModel,
+        rightAssistantModel: settings.rightAssistantModel,
+        leftAssistantPersona: settings.leftAssistantPersona,
+        rightAssistantPersona: settings.rightAssistantPersona,
+      };
+
+      onUpdate(newSettings);
+      alert("일반 설정이 초기화되었습니다. (페르소나/단축키 유지됨)");
     }
   };
 
@@ -327,9 +333,19 @@ const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUpdate })
                     {showApiKey ? <EyeOff size={16} /> : <Eye size={16} />}
                   </button>
                 </div>
-                <p className="text-xs text-zinc-500 mt-2">
-                  * 키는 로컬 브라우저에만 저장되며 서버로 전송되지 않습니다.
-                </p>
+                <div className="flex items-start justify-between mt-2 gap-2">
+                  <p className="text-xs text-zinc-500">
+                    * 키는 로컬 브라우저에만 저장되며 서버로 전송되지 않습니다.
+                  </p>
+                  <a 
+                    href="https://aistudio.google.com/app/apikey" 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="text-xs text-blue-400 hover:text-blue-300 hover:underline flex items-center gap-1 whitespace-nowrap"
+                  >
+                    API 키 발급받기 <ExternalLink size={10} />
+                  </a>
+                </div>
               </div>
 
               {/* Editor AI Model */}
