@@ -67,6 +67,11 @@ async function retryWithBackoff<T>(fn: () => Promise<T>, retries = 3, delay = 10
     const msg = error?.message || '';
     const status = error?.status || error?.code;
     
+    // Do not retry if aborted
+    if (msg.includes('aborted') || msg.includes('cancelled')) {
+      throw error;
+    }
+    
     const shouldRetry = retries > 0 && (
       msg.includes('xhr error') || 
       msg.includes('fetch failed') || 
@@ -90,7 +95,8 @@ export const generateRevision = async (
   text: string, 
   mode: AIRevisionMode,
   modelName: string = 'gemini-3-pro-preview',
-  apiKey?: string
+  apiKey?: string,
+  signal?: AbortSignal
 ): Promise<string> => {
   try {
     const key = (apiKey || process.env.API_KEY || '').trim();
@@ -100,14 +106,21 @@ export const generateRevision = async (
 
     const ai = new GoogleGenAI({ apiKey: key });
     
-    const response = await retryWithBackoff<GenerateContentResponse>(() => ai.models.generateContent({
-      model: modelName,
-      contents: getPromptForMode(mode, text),
-      config: {
-        systemInstruction: SYSTEM_INSTRUCTION,
-        temperature: 0.7, 
-      }
-    }));
+    const response = await retryWithBackoff<GenerateContentResponse>(async () => {
+      if (signal?.aborted) throw new Error("Operation cancelled");
+      
+      const res = await ai.models.generateContent({
+        model: modelName,
+        contents: getPromptForMode(mode, text),
+        config: {
+          systemInstruction: SYSTEM_INSTRUCTION,
+          temperature: 0.7, 
+        }
+      });
+      
+      if (signal?.aborted) throw new Error("Operation cancelled");
+      return res;
+    });
 
     let result = response.text?.trim() || text;
     result = result.replace(/^```(?:html|text)?\s*/i, '').replace(/\s*```$/, '').trim();

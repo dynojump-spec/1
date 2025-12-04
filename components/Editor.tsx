@@ -1,6 +1,6 @@
 
 import React, { useRef, useEffect, useState, useCallback, useImperativeHandle, forwardRef, useMemo, useLayoutEffect } from 'react';
-import { Loader2, Wand2, Check, MessageSquare, RefreshCw, Trash2, Zap, Heart, Eye, Languages, Scissors, Mountain } from 'lucide-react';
+import { Wand2, Check, MessageSquare, RefreshCw, Trash2, Zap, Heart, Scissors, Mountain, Languages } from 'lucide-react';
 import { AppSettings, FontType, AIRevisionMode, SnippetType } from '../types';
 import { generateInteractiveDiffHtml } from '../utils/diffEngine';
 import { generateRevision } from '../services/geminiService';
@@ -9,6 +9,7 @@ export interface EditorHandle {
   find: (term: string, direction: 'next' | 'prev') => boolean;
   replace: (term: string) => void;
   focus: () => void;
+  cancelOperation: () => void; // New method to cancel AI
 }
 
 interface Props {
@@ -18,6 +19,7 @@ interface Props {
   readOnly?: boolean;
   onRestore?: () => void;
   onPermanentDelete?: () => void;
+  onProcessingChange?: (isProcessing: boolean) => void; // Notify parent of AI status
 }
 
 interface HistoryState {
@@ -154,10 +156,11 @@ const setCaretGlobalPosition = (element: HTMLElement, offset: number) => {
   }
 };
 
-const Editor = forwardRef<EditorHandle, Props>(({ content, onChange, settings, readOnly = false, onRestore, onPermanentDelete }, ref) => {
+const Editor = forwardRef<EditorHandle, Props>(({ content, onChange, settings, readOnly = false, onRestore, onPermanentDelete, onProcessingChange }, ref) => {
   const editorRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
   
   const [isAIProcessing, setIsAIProcessing] = useState(false);
   const [showAITooltip, setShowAITooltip] = useState(false);
@@ -368,6 +371,14 @@ const Editor = forwardRef<EditorHandle, Props>(({ content, onChange, settings, r
       if (readOnly) return;
       document.execCommand('insertText', false, replacement);
       handleInput();
+    },
+    cancelOperation: () => {
+       if (abortControllerRef.current) {
+          abortControllerRef.current.abort();
+          abortControllerRef.current = null;
+          // State cleanup happens in runAIRevision catch/finally block or we force it here
+          // but better to let the async flow handle it.
+       }
     }
   }));
 
@@ -427,16 +438,30 @@ const Editor = forwardRef<EditorHandle, Props>(({ content, onChange, settings, r
       if (debounceRef.current) clearTimeout(debounceRef.current);
       saveSnapshot(editorRef.current.innerHTML, getCaretGlobalOffset(editorRef.current));
     }
+    
+    // Start Processing
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    
     setIsAIProcessing(true);
     setShowAITooltip(false);
+    if (onProcessingChange) onProcessingChange(true);
+
     try {
       const fragment = targetRange.cloneContents();
       const textToRevise = fragmentToText(fragment); 
       
       if (!textToRevise.trim()) throw new Error("No text selected");
       
-      // Pass the user's API Key from settings
-      const revisedText = await generateRevision(textToRevise, mode, settings.aiModel, settings.apiKey);
+      // Pass the user's API Key from settings and the AbortSignal
+      const revisedText = await generateRevision(
+        textToRevise, 
+        mode, 
+        settings.aiModel, 
+        settings.apiKey,
+        controller.signal
+      );
+
       const diffHtml = generateInteractiveDiffHtml(textToRevise, revisedText);
       
       targetRange.deleteContents();
@@ -481,15 +506,23 @@ const Editor = forwardRef<EditorHandle, Props>(({ content, onChange, settings, r
       }
       playSuccessSound(settings.soundVolume);
     } catch (error) {
-      console.error(error);
       const msg = error instanceof Error ? error.message : "Unknown error";
-      if (msg.includes("API Key")) {
-         alert("API 키가 설정되지 않았습니다. 설정 메뉴에서 Google API Key를 입력해주세요.");
+      
+      // Ignore Abort errors (user cancelled)
+      if (msg === "Operation cancelled" || (error instanceof Error && error.name === 'AbortError')) {
+         console.log("AI Operation Cancelled by user");
       } else {
-         alert("AI 수정 중 오류가 발생했습니다. (잠시 후 다시 시도하거나 키를 확인해주세요)\n" + msg);
+         console.error(error);
+         if (msg.includes("API Key")) {
+            alert("API 키가 설정되지 않았습니다. 설정 메뉴에서 Google API Key를 입력해주세요.");
+         } else {
+            alert("AI 수정 중 오류가 발생했습니다. (잠시 후 다시 시도하거나 키를 확인해주세요)\n" + msg);
+         }
       }
     } finally {
       setIsAIProcessing(false);
+      abortControllerRef.current = null;
+      if (onProcessingChange) onProcessingChange(false);
     }
   };
 
@@ -927,15 +960,7 @@ const Editor = forwardRef<EditorHandle, Props>(({ content, onChange, settings, r
         </div>
       )}
 
-      {isAIProcessing && selectionRect && (
-        <div 
-          className="fixed z-50 flex items-center gap-2 px-4 py-2 rounded-full bg-blue-600 text-white shadow-lg animate-in fade-in zoom-in duration-200"
-          style={{ top: selectionRect.top, left: selectionRect.left, transform: 'translateX(-50%)' }}
-        >
-          <Loader2 size={16} className="animate-spin" />
-          <span className="text-sm font-bold">AI가 생각 중입니다...</span>
-        </div>
-      )}
+      {/* Note: Floating "AI Processing" UI removed. State is now handled by Parent App.tsx in Header */}
     </div>
   );
 });

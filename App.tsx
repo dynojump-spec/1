@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Menu, Settings, Download, CheckCircle2, AlertCircle, Search, X, ArrowDown, ArrowUp, Replace, CopyCheck, Loader2, ListFilter, Bot, MessageSquarePlus, PanelLeft, PanelRight } from 'lucide-react';
+import { Menu, Settings, Download, CheckCircle2, AlertCircle, Search, X, ArrowDown, ArrowUp, Replace, CopyCheck, Loader2, ListFilter, Bot, MessageSquarePlus, PanelLeft, PanelRight, Square } from 'lucide-react';
 import { NovelDocument, AppSettings, FontType, AVAILABLE_MODELS } from './types';
 import * as StorageService from './services/storageService';
 import Sidebar from './components/Sidebar';
@@ -35,6 +35,8 @@ const App: React.FC = () => {
     // Default to false for fresh load, or true if previously saved
     return saved !== null ? JSON.parse(saved) : false;
   });
+
+  const [isGlobalAIProcessing, setIsGlobalAIProcessing] = useState(false);
 
   // Panel Widths (Percentage)
   const [leftPanelWidth, setLeftPanelWidth] = useState(25);
@@ -432,6 +434,12 @@ const App: React.FC = () => {
     }
   };
 
+  const handleStopAI = () => {
+    if (editorRef.current) {
+      editorRef.current.cancelOperation();
+    }
+  };
+
   return (
     <div className="flex h-screen overflow-hidden bg-zinc-950 text-zinc-100 font-sans">
       <Sidebar
@@ -525,6 +533,23 @@ const App: React.FC = () => {
                       <>
                           <div className="w-px h-3 bg-zinc-800 hidden sm:block"></div>
                           <span className="text-zinc-400 whitespace-nowrap hidden sm:inline">{charCount.toLocaleString()}자</span>
+                          {/* AI Processing Status */}
+                          {isGlobalAIProcessing && (
+                             <>
+                               <div className="w-px h-3 bg-zinc-800"></div>
+                               <div className="flex items-center gap-2 text-blue-400 bg-blue-900/10 px-2 py-0.5 rounded border border-blue-900/30 animate-pulse">
+                                  <Loader2 className="animate-spin" size={12} />
+                                  <span className="hidden sm:inline font-bold">AI 수정 중...</span>
+                                  <button 
+                                    onClick={handleStopAI}
+                                    className="p-0.5 hover:text-red-400 hover:bg-red-900/20 rounded transition-colors ml-1"
+                                    title="작업 중지"
+                                  >
+                                    <Square size={10} fill="currentColor" />
+                                  </button>
+                               </div>
+                             </>
+                          )}
                       </>
                     )}
                   </div>
@@ -608,6 +633,7 @@ const App: React.FC = () => {
                     readOnly={currentDoc.isDeleted}
                     onRestore={() => handleRestore(currentDoc.id)}
                     onPermanentDelete={() => handlePermanentDelete(currentDoc.id)}
+                    onProcessingChange={setIsGlobalAIProcessing}
                   />
                 ) : (
                   <div className="flex flex-col items-center justify-center h-full text-zinc-500 gap-4">
