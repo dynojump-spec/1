@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Plus, Trash2, Keyboard, Command, Type, Palette, Cpu, Download, Upload, AlignJustify, AlignLeft, Wand2, Key, Eye, EyeOff, MessageSquare, Volume2, Indent, Bot, PanelLeft, PanelRight, BookOpen, UserCircle, PenTool, FileUp, FileText, RotateCcw, ExternalLink } from 'lucide-react';
+import { X, Plus, Trash2, Keyboard, Command, Type, Palette, Cpu, Download, Upload, AlignJustify, AlignLeft, Wand2, Key, Eye, EyeOff, MessageSquare, Volume2, Indent, Bot, PanelLeft, PanelRight, BookOpen, UserCircle, PenTool, FileUp, FileText, RotateCcw, ExternalLink, Database, Save, FolderUp } from 'lucide-react';
 import { AppSettings, FontType, Snippet, SnippetType, AVAILABLE_MODELS, AIRevisionMode, KnowledgeFile } from '../types';
 import { getDefaultSettings } from '../services/storageService';
 import { v4 as uuidv4 } from 'uuid';
@@ -36,6 +36,7 @@ const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUpdate })
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const knowledgeFileInputRef = useRef<HTMLInputElement>(null);
+  const backupFileInputRef = useRef<HTMLInputElement>(null);
 
   // Reset inputs when opening/closing
   useEffect(() => {
@@ -247,6 +248,76 @@ const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUpdate })
       if (!window.confirm("이 참조 파일을 삭제하시겠습니까?")) return;
       const currentFiles = getAssistantConfig().persona?.files || [];
       updateAssistantConfig('files', currentFiles.filter(f => f.id !== id));
+  };
+
+  // --- Backup & Restore Logic ---
+  const handleFullBackup = () => {
+    try {
+      const docs = localStorage.getItem('novelcraft_docs');
+      const savedSettings = localStorage.getItem('novelcraft_settings');
+      const chatSessions = localStorage.getItem('novelcraft_chat_sessions');
+      const chatSessionsLeft = localStorage.getItem('novelcraft_chat_sessions_left');
+      
+      const backupData = {
+        version: 1,
+        timestamp: new Date().toISOString(),
+        data: {
+          docs: docs ? JSON.parse(docs) : [],
+          settings: savedSettings ? JSON.parse(savedSettings) : {},
+          chatSessions: chatSessions ? JSON.parse(chatSessions) : [],
+          chatSessionsLeft: chatSessionsLeft ? JSON.parse(chatSessionsLeft) : []
+        }
+      };
+      
+      const dataStr = JSON.stringify(backupData, null, 2);
+      const blob = new Blob([dataStr], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      const date = new Date().toISOString().slice(0, 10);
+      link.href = url;
+      link.download = `novelcraft-backup-${date}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (error) {
+      console.error("Backup failed:", error);
+      alert("백업 파일 생성 중 오류가 발생했습니다.");
+    }
+  };
+
+  const handleFullRestore = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!window.confirm("경고: 데이터를 복원하면 현재 브라우저에 저장된 모든 소설과 설정이 덮어씌워집니다.\n계속하시겠습니까?")) {
+      if (backupFileInputRef.current) backupFileInputRef.current.value = '';
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const content = event.target?.result as string;
+        const parsed = JSON.parse(content);
+        
+        if (parsed.version && parsed.data) {
+          if (parsed.data.docs) localStorage.setItem('novelcraft_docs', JSON.stringify(parsed.data.docs));
+          if (parsed.data.settings) localStorage.setItem('novelcraft_settings', JSON.stringify(parsed.data.settings));
+          if (parsed.data.chatSessions) localStorage.setItem('novelcraft_chat_sessions', JSON.stringify(parsed.data.chatSessions));
+          if (parsed.data.chatSessionsLeft) localStorage.setItem('novelcraft_chat_sessions_left', JSON.stringify(parsed.data.chatSessionsLeft));
+          
+          alert("데이터 복원이 완료되었습니다.\n앱을 새로고침합니다.");
+          window.location.reload();
+        } else {
+          alert("올바르지 않은 백업 파일 형식입니다.");
+        }
+      } catch (error) {
+        console.error("Restore failed:", error);
+        alert("복원 중 오류가 발생했습니다. 파일이 손상되었거나 올바르지 않습니다.");
+      }
+    };
+    reader.readAsText(file);
+    if (backupFileInputRef.current) backupFileInputRef.current.value = '';
   };
 
   const handleReset = () => {
@@ -501,6 +572,43 @@ const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUpdate })
                   </div>
                 </div>
               </div>
+              
+              <div className="border-t border-zinc-800 my-4"></div>
+
+              {/* Data Management Section */}
+              <div>
+                <label className="block mb-3 text-sm font-medium text-zinc-400 flex items-center gap-2">
+                  <Database size={16} /> 데이터 관리 (Data Management)
+                </label>
+                <div className="p-4 bg-zinc-800/30 border border-zinc-800 rounded-lg space-y-3">
+                  <p className="text-xs text-zinc-500 mb-2 leading-relaxed">
+                    본 앱은 서버가 아닌 <strong>브라우저 저장소</strong>에 데이터를 저장합니다. 
+                    다른 컴퓨터나 브라우저에서 작업하려면 백업 파일을 내보내어 이동하세요.
+                  </p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button 
+                      onClick={handleFullBackup}
+                      className="flex items-center justify-center gap-2 px-3 py-2.5 bg-zinc-700 hover:bg-zinc-600 text-zinc-200 rounded-lg border border-zinc-600 text-xs font-bold transition-all active:scale-95 shadow-sm"
+                    >
+                      <Save size={14} /> 전체 백업 (.json)
+                    </button>
+                    <button 
+                      onClick={() => backupFileInputRef.current?.click()}
+                      className="flex items-center justify-center gap-2 px-3 py-2.5 bg-green-900/30 hover:bg-green-900/50 text-green-200 rounded-lg border border-green-800/50 text-xs font-bold transition-all active:scale-95 shadow-sm"
+                    >
+                      <FolderUp size={14} /> 데이터 복원
+                    </button>
+                    <input 
+                      type="file" 
+                      ref={backupFileInputRef} 
+                      onChange={handleFullRestore} 
+                      className="hidden" 
+                      accept=".json" 
+                    />
+                  </div>
+                </div>
+              </div>
+
             </div>
           )}
 
