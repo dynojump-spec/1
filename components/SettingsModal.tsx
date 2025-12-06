@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Plus, Trash2, Keyboard, Command, Type, Palette, Cpu, Download, Upload, AlignJustify, AlignLeft, Wand2, Key, Eye, EyeOff, MessageSquare, Volume2, Indent, Bot, PanelLeft, PanelRight, BookOpen, UserCircle, PenTool, FileUp, FileText, RotateCcw, ExternalLink, Database, Save, FolderUp } from 'lucide-react';
+import { X, Plus, Trash2, Keyboard, Command, Type, Palette, Cpu, Download, Upload, AlignJustify, AlignLeft, Wand2, Key, Eye, EyeOff, MessageSquare, Volume2, Indent, Bot, PanelLeft, PanelRight, BookOpen, UserCircle, PenTool, FileUp, FileText, RotateCcw, ExternalLink, Database, Save, FolderUp, Folder } from 'lucide-react';
 import { AppSettings, FontType, Snippet, SnippetType, AVAILABLE_MODELS, AIRevisionMode, KnowledgeFile } from '../types';
 import { getDefaultSettings } from '../services/storageService';
 import { v4 as uuidv4 } from 'uuid';
@@ -333,6 +333,7 @@ const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUpdate })
         rightAssistantModel: settings.rightAssistantModel,
         leftAssistantPersona: settings.leftAssistantPersona,
         rightAssistantPersona: settings.rightAssistantPersona,
+        enableSaveAsDialog: settings.enableSaveAsDialog, // Optionally preserve this too? Let's reset it to default (true) or user pref. Let's keep it user pref for safety.
       };
 
       onUpdate(newSettings);
@@ -575,8 +576,39 @@ const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUpdate })
               
               <div className="border-t border-zinc-800 my-4"></div>
 
-              {/* Data Management Section */}
+              {/* Export Settings */}
               <div>
+                <label className="block mb-3 text-sm font-medium text-zinc-400 flex items-center gap-2">
+                  <Download size={16} /> 파일 내보내기 설정 (File Export)
+                </label>
+                <div className="p-4 bg-zinc-800/30 border border-zinc-800 rounded-lg">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-zinc-200 font-medium mb-1">저장 위치 선택 대화상자 사용</p>
+                      <p className="text-xs text-zinc-500">
+                        켜짐: 저장할 때마다 폴더를 직접 지정합니다.<br/>
+                        꺼짐: 브라우저 기본 다운로드 폴더에 자동 저장됩니다.
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => onUpdate({ ...settings, enableSaveAsDialog: !settings.enableSaveAsDialog })}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                        settings.enableSaveAsDialog ? 'bg-blue-600' : 'bg-zinc-700'
+                      }`}
+                    >
+                      <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                        settings.enableSaveAsDialog ? 'translate-x-6' : 'translate-x-1'
+                      }`} />
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-zinc-600 mt-3 pt-3 border-t border-zinc-700/50">
+                    * 브라우저 보안 정책상 특정 경로(예: C:\MyNovel)를 고정할 수 없습니다. 대신 이 옵션을 사용하여 저장 시마다 원하는 폴더를 선택하세요.
+                  </p>
+                </div>
+              </div>
+
+              {/* Data Management Section */}
+              <div className="mt-6">
                 <label className="block mb-3 text-sm font-medium text-zinc-400 flex items-center gap-2">
                   <Database size={16} /> 데이터 관리 (Data Management)
                 </label>

@@ -9,9 +9,9 @@ const SETTINGS_KEY = 'novelcraft_settings';
 const DEFAULT_SNIPPETS: Snippet[] = [
   {
     "id": "19639840-2fc2-4e09-8c3c-6038d02f9e94",
-    "trigger": "Alt+1",
-    "text": "“{|}”",
-    "type": SnippetType.TEXT
+    "trigger": "Alt+Q",
+    "text": "grammar",
+    "type": SnippetType.AI_COMMAND
   },
   {
     "id": "dd4c5fea-eaff-4fae-afb5-b344377c366c",
@@ -178,6 +178,7 @@ export const getDefaultSettings = (): AppSettings => ({
 
   apiKey: '',
   soundVolume: 0.5,
+  enableSaveAsDialog: true, // Default to true
 });
 
 // Helper to get raw list
@@ -300,6 +301,7 @@ export const getLocalSettings = (): AppSettings | null => {
   if (typeof parsed.soundVolume === 'undefined') parsed.soundVolume = defaults.soundVolume;
   if (!parsed.alignment) parsed.alignment = defaults.alignment;
   if (typeof parsed.enableIndentation === 'undefined') parsed.enableIndentation = defaults.enableIndentation;
+  if (typeof parsed.enableSaveAsDialog === 'undefined') parsed.enableSaveAsDialog = defaults.enableSaveAsDialog;
   if (typeof parsed.apiKey === 'undefined') parsed.apiKey = '';
   
   delete parsed.showFormattingMarks;

@@ -335,7 +335,7 @@ const App: React.FC = () => {
     }
   };
 
-  const handleExportTxt = () => {
+  const handleExportTxt = async () => {
     if (!currentDoc) return;
     
     // Create a temporary container to manipulate the DOM for cleanup
@@ -379,14 +379,44 @@ const App: React.FC = () => {
     // 5. Normalize spacing
     text = text.replace(/\n{3,}/g, '\n\n');
     
-    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `${currentDoc.title || 'novel'}.txt`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const fileName = `${currentDoc.title || 'novel'}.txt`;
+
+    const triggerDownloadLegacy = () => {
+        const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
+    // If setting is enabled and browser supports File System Access API
+    if (settings.enableSaveAsDialog !== false && 'showSaveFilePicker' in window) {
+        try {
+          const handle = await (window as any).showSaveFilePicker({
+            suggestedName: fileName,
+            types: [{
+              description: 'Text Files',
+              accept: { 'text/plain': ['.txt'] },
+            }],
+          });
+          const writable = await handle.createWritable();
+          await writable.write(text);
+          await writable.close();
+        } catch (err: any) {
+          // Ignore abort (user cancelled)
+          if (err.name === 'AbortError') return;
+
+          // For cross-origin or other errors, fallback to legacy download
+          console.warn('File System Access API failed, falling back:', err);
+          triggerDownloadLegacy();
+        }
+    } else {
+        // Fallback or User preference: Legacy Download (Browser default folder)
+        triggerDownloadLegacy();
+    }
   };
   
   // Real-time Match Counting
@@ -578,7 +608,7 @@ const App: React.FC = () => {
                      <PanelRight size={20} />
                   </button>
 
-                  <button onClick={handleExportTxt} className="p-2 text-zinc-400 hover:text-blue-400 hover:bg-zinc-800 rounded">
+                  <button onClick={handleExportTxt} className="p-2 text-zinc-400 hover:text-blue-400 hover:bg-zinc-800 rounded" title="텍스트(.txt)로 내보내기">
                     <Download size={20} />
                   </button>
                   <button onClick={() => setIsSettingsOpen(true)} className="p-2 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 rounded">

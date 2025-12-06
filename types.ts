@@ -57,6 +57,9 @@ export interface AppSettings {
   apiKey?: string;
   soundVolume: number;
   
+  // Export Settings
+  enableSaveAsDialog?: boolean; // New: Toggle for File System Access API
+  
   // Deprecated but kept for type safety during migration if needed
   assistantModel?: string; 
 }
