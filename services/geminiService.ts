@@ -1,5 +1,5 @@
 
-import { GoogleGenAI, GenerateContentResponse, Part } from "@google/genai";
+import { GoogleGenAI, GenerateContentResponse, Part, HarmCategory, HarmBlockThreshold } from "@google/genai";
 import { AIRevisionMode, ChatMessage, SearchSource, AssistantPersona } from '../types';
 
 const SYSTEM_INSTRUCTION = `
@@ -16,6 +16,14 @@ RULES:
    - **DO NOT ADD EXTRA BLANK LINES**: Maintain the original vertical spacing.
    - **DO NOT ADD NEWLINES INSIDE A SENTENCE**: Keep sentences within their original paragraphs.
 `;
+
+// Safety Settings: Disable all filters for creative writing context
+const SAFETY_SETTINGS = [
+  { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
+  { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
+  { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+  { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+];
 
 const getPromptForMode = (mode: AIRevisionMode, text: string): string => {
   const formatNote = "매우 중요: 1. 원문의 줄바꿈(엔터) 위치와 문단 구분을 **절대 변경하지 마세요**. 문단을 합치거나 나누지 말고 원형을 유지하세요. 2. 입력된 문장이 미완성(끊김) 상태라면, 문맥에 맞게 자연스럽게 문장을 완성시킨 후 수정하세요.";
@@ -193,6 +201,7 @@ export const generateRevision = async (
         config: {
           systemInstruction: SYSTEM_INSTRUCTION,
           temperature: 0.7, 
+          safetySettings: SAFETY_SETTINGS, // Disable safety filters
         }
       });
       return res;
@@ -308,6 +317,7 @@ export const chatWithAssistant = async (
       config: {
         tools: [{ googleSearch: {} }],
         systemInstruction: baseInstruction,
+        safetySettings: SAFETY_SETTINGS, // Disable safety filters
       }
     }), 3, 1000);
   };
