@@ -107,6 +107,7 @@ export const getDefaultSettings = (): AppSettings => ({
   fontType: FontType.SERIF,
   alignment: 'justify',
   enableIndentation: true,
+  editorBackgroundColor: '#09090b', // Default Dark (Zinc-950)
   snippets: DEFAULT_SNIPPETS,
   aiModel: 'gemini-2.5-pro', // Explicitly set default to 2.5 Pro
   
@@ -303,6 +304,8 @@ export const getLocalSettings = (): AppSettings | null => {
   if (!parsed.alignment) parsed.alignment = defaults.alignment;
   if (typeof parsed.enableIndentation === 'undefined') parsed.enableIndentation = defaults.enableIndentation;
   if (typeof parsed.enableSaveAsDialog === 'undefined') parsed.enableSaveAsDialog = defaults.enableSaveAsDialog;
+  if (!parsed.editorBackgroundColor) parsed.editorBackgroundColor = defaults.editorBackgroundColor;
+
   if (typeof parsed.apiKey === 'undefined') parsed.apiKey = '';
   
   delete parsed.showFormattingMarks;

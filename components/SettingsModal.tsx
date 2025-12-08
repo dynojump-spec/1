@@ -1,6 +1,7 @@
 
+
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Plus, Trash2, Keyboard, Command, Type, Palette, Cpu, Download, Upload, AlignJustify, AlignLeft, Wand2, Key, Eye, EyeOff, MessageSquare, Volume2, Indent, Bot, PanelLeft, PanelRight, BookOpen, UserCircle, PenTool, FileUp, FileText, RotateCcw, ExternalLink, Database, Save, FolderUp, Folder } from 'lucide-react';
+import { X, Plus, Trash2, Keyboard, Command, Type, Palette, Cpu, Download, Upload, AlignJustify, AlignLeft, Wand2, Key, Eye, EyeOff, MessageSquare, Volume2, Indent, Bot, PanelLeft, PanelRight, BookOpen, UserCircle, PenTool, FileUp, FileText, RotateCcw, ExternalLink, Database, Save, FolderUp, Folder, PaintBucket } from 'lucide-react';
 import { AppSettings, FontType, Snippet, SnippetType, AVAILABLE_MODELS, AIRevisionMode, KnowledgeFile } from '../types';
 import { getDefaultSettings } from '../services/storageService';
 import { v4 as uuidv4 } from 'uuid';
@@ -341,6 +342,15 @@ const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUpdate })
     }
   };
 
+  // Predefined Background Colors
+  const BG_PRESETS = [
+    { name: 'Dark (Default)', value: '#09090b' },
+    { name: 'Midnight', value: '#18181b' },
+    { name: 'Charcoal', value: '#27272a' },
+    { name: 'Sepia (Dark)', value: '#1c1917' },
+    { name: 'Paper (Light)', value: '#ffffff' },
+  ];
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
       <div className="w-full max-w-2xl rounded-lg border border-zinc-800 bg-zinc-900 p-6 shadow-xl flex flex-col max-h-[90vh]">
@@ -442,75 +452,112 @@ const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUpdate })
 
               <div className="border-t border-zinc-800 my-4"></div>
 
-              {/* Typography Settings */}
+              {/* Visual & Typography Settings */}
               <div className="space-y-4">
-                {/* Font Type */}
+                
+                {/* Background Color Picker */}
                 <div>
-                  <label className="block mb-2 text-sm font-medium text-zinc-400">글꼴 (Font Family)</label>
-                  <div className="grid grid-cols-2 gap-3">
-                    <button
-                      onClick={() => onUpdate({ ...settings, fontType: FontType.SERIF })}
-                      className={`p-3 rounded border text-sm font-serif ${
-                        settings.fontType === FontType.SERIF
-                          ? 'border-blue-500 bg-blue-900/20 text-blue-100'
-                          : 'border-zinc-700 bg-zinc-800 text-zinc-400 hover:bg-zinc-750'
-                      }`}
-                    >
-                      명조체 (Serif)
-                    </button>
-                    <button
-                      onClick={() => onUpdate({ ...settings, fontType: FontType.SANS })}
-                      className={`p-3 rounded border text-sm font-sans ${
-                        settings.fontType === FontType.SANS
-                          ? 'border-blue-500 bg-blue-900/20 text-blue-100'
-                          : 'border-zinc-700 bg-zinc-800 text-zinc-400 hover:bg-zinc-750'
-                      }`}
-                    >
-                      고딕체 (Sans)
-                    </button>
-                  </div>
+                   <label className="block mb-2 text-sm font-medium text-zinc-400 flex items-center gap-2">
+                      <PaintBucket size={16} /> 배경 색상 (Editor Background)
+                   </label>
+                   <div className="flex flex-wrap gap-2 mb-2">
+                      {BG_PRESETS.map((preset) => (
+                         <button
+                            key={preset.value}
+                            onClick={() => onUpdate({ ...settings, editorBackgroundColor: preset.value })}
+                            className={`w-8 h-8 rounded-full border shadow-sm transition-transform hover:scale-110 ${
+                               settings.editorBackgroundColor === preset.value ? 'ring-2 ring-blue-500 ring-offset-2 ring-offset-zinc-900 border-transparent' : 'border-zinc-700'
+                            }`}
+                            style={{ backgroundColor: preset.value }}
+                            title={preset.name}
+                         />
+                      ))}
+                      <div className="relative group">
+                          <input 
+                              type="color" 
+                              value={settings.editorBackgroundColor || '#09090b'}
+                              onChange={(e) => onUpdate({ ...settings, editorBackgroundColor: e.target.value })}
+                              className="w-8 h-8 rounded-full border border-zinc-700 p-0 bg-transparent cursor-pointer overflow-hidden"
+                          />
+                          <div className="absolute inset-0 rounded-full ring-2 ring-blue-500 ring-offset-2 ring-offset-zinc-900 opacity-0 pointer-events-none transition-opacity" 
+                               style={{ opacity: BG_PRESETS.some(p => p.value === settings.editorBackgroundColor) ? 0 : 1 }}
+                          ></div>
+                      </div>
+                   </div>
+                   <p className="text-[10px] text-zinc-500">
+                      * 배경 밝기에 따라 글자 색상(흰색/검은색)이 자동으로 조절됩니다.
+                   </p>
                 </div>
 
-                {/* Paragraph Alignment & Indentation */}
-                <div>
-                  <label className="block mb-2 text-sm font-medium text-zinc-400">문단 설정 (Alignment & Indent)</label>
-                  <div className="grid grid-cols-2 gap-3 mb-3">
-                    <button
-                      onClick={() => onUpdate({ ...settings, alignment: 'justify' })}
-                      className={`p-3 rounded border text-sm flex items-center justify-center gap-2 ${
-                        settings.alignment === 'justify'
-                          ? 'border-blue-500 bg-blue-900/20 text-blue-100'
-                          : 'border-zinc-700 bg-zinc-800 text-zinc-400 hover:bg-zinc-750'
-                      }`}
-                    >
-                      <AlignJustify size={16} />
-                      양쪽 정렬
-                    </button>
-                    <button
-                      onClick={() => onUpdate({ ...settings, alignment: 'left' })}
-                      className={`p-3 rounded border text-sm flex items-center justify-center gap-2 ${
-                        settings.alignment === 'left'
-                          ? 'border-blue-500 bg-blue-900/20 text-blue-100'
-                          : 'border-zinc-700 bg-zinc-800 text-zinc-400 hover:bg-zinc-750'
-                      }`}
-                    >
-                      <AlignLeft size={16} />
-                      왼쪽 정렬
-                    </button>
-                  </div>
-                  
-                  {/* Indentation Toggle */}
-                  <button
-                    onClick={() => onUpdate({ ...settings, enableIndentation: !settings.enableIndentation })}
-                    className={`w-full p-3 rounded border text-sm flex items-center justify-center gap-2 transition-colors ${
-                      settings.enableIndentation
-                        ? 'border-blue-500 bg-blue-900/20 text-blue-100'
-                        : 'border-zinc-700 bg-zinc-800 text-zinc-400 hover:bg-zinc-750'
-                    }`}
-                  >
-                    <Indent size={16} />
-                    {settings.enableIndentation ? '문단 들여쓰기 켜짐 (On)' : '문단 들여쓰기 꺼짐 (Off)'}
-                  </button>
+                <div className="grid grid-cols-2 gap-4">
+                   {/* Font Type */}
+                    <div>
+                      <label className="block mb-2 text-sm font-medium text-zinc-400">글꼴 (Font Family)</label>
+                      <div className="flex flex-col gap-2">
+                        <button
+                          onClick={() => onUpdate({ ...settings, fontType: FontType.SERIF })}
+                          className={`p-3 rounded border text-sm font-serif ${
+                            settings.fontType === FontType.SERIF
+                              ? 'border-blue-500 bg-blue-900/20 text-blue-100'
+                              : 'border-zinc-700 bg-zinc-800 text-zinc-400 hover:bg-zinc-750'
+                          }`}
+                        >
+                          명조체 (Serif)
+                        </button>
+                        <button
+                          onClick={() => onUpdate({ ...settings, fontType: FontType.SANS })}
+                          className={`p-3 rounded border text-sm font-sans ${
+                            settings.fontType === FontType.SANS
+                              ? 'border-blue-500 bg-blue-900/20 text-blue-100'
+                              : 'border-zinc-700 bg-zinc-800 text-zinc-400 hover:bg-zinc-750'
+                          }`}
+                        >
+                          고딕체 (Sans)
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Paragraph Settings */}
+                    <div>
+                      <label className="block mb-2 text-sm font-medium text-zinc-400">문단 설정</label>
+                      <div className="flex flex-col gap-2">
+                         <div className="flex gap-2">
+                            <button
+                              onClick={() => onUpdate({ ...settings, alignment: 'justify' })}
+                              className={`flex-1 p-3 rounded border text-sm flex items-center justify-center gap-2 ${
+                                settings.alignment === 'justify'
+                                  ? 'border-blue-500 bg-blue-900/20 text-blue-100'
+                                  : 'border-zinc-700 bg-zinc-800 text-zinc-400 hover:bg-zinc-750'
+                              }`}
+                              title="양쪽 정렬"
+                            >
+                              <AlignJustify size={16} />
+                            </button>
+                            <button
+                              onClick={() => onUpdate({ ...settings, alignment: 'left' })}
+                              className={`flex-1 p-3 rounded border text-sm flex items-center justify-center gap-2 ${
+                                settings.alignment === 'left'
+                                  ? 'border-blue-500 bg-blue-900/20 text-blue-100'
+                                  : 'border-zinc-700 bg-zinc-800 text-zinc-400 hover:bg-zinc-750'
+                              }`}
+                              title="왼쪽 정렬"
+                            >
+                              <AlignLeft size={16} />
+                            </button>
+                         </div>
+                        <button
+                          onClick={() => onUpdate({ ...settings, enableIndentation: !settings.enableIndentation })}
+                          className={`w-full p-3 rounded border text-sm flex items-center justify-center gap-2 transition-colors ${
+                            settings.enableIndentation
+                              ? 'border-blue-500 bg-blue-900/20 text-blue-100'
+                              : 'border-zinc-700 bg-zinc-800 text-zinc-400 hover:bg-zinc-750'
+                          }`}
+                        >
+                          <Indent size={16} />
+                          {settings.enableIndentation ? '들여쓰기 ON' : '들여쓰기 OFF'}
+                        </button>
+                      </div>
+                    </div>
                 </div>
 
                 {/* Font Size */}
@@ -644,6 +691,7 @@ const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUpdate })
             </div>
           )}
 
+          {/* ... (Assistants and Shortcuts tabs remain unchanged) ... */}
           {activeTab === 'assistants' && (
             <div className="space-y-6">
               {/* Toggle for Left/Right */}

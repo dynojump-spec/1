@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, GenerateContentResponse, Part, HarmCategory, HarmBlockThreshold } from "@google/genai";
 import { AIRevisionMode, ChatMessage, SearchSource, AssistantPersona } from '../types';
 
@@ -82,7 +81,7 @@ const handleGeminiError = (error: any, modelName: string) => {
     
     // 1. Quota / Rate Limits (429)
     if (isQuotaError(error)) {
-        throw new Error(`[사용량 한도 초과] 선택하신 모델(${modelName})의 무료 사용량이 초과되었습니다.\n잠시 기다리시거나, 설정에서 더 가벼운 'Flash' 모델로 변경해 주세요.\n(Tip: 자동으로 Flash 모델로 전환을 시도했습니다.)`);
+        throw new Error(`[사용량 한도 초과] 선택하신 모델(${modelName})의 무료 사용량이 초과되었습니다.\n잠시 기다리시거나, 설정에서 더 가벼운 'Flash' 모델로 변경해 주세요.`);
     }
 
     // 2. Safety Filters (FinishReason: SAFETY)
@@ -155,7 +154,7 @@ async function retryWithBackoff<T>(fn: () => Promise<T>, retries = 3, delay = 10
     if (msg.includes('aborted') || msg.includes('cancelled') || msg.includes('Operation cancelled')) {
       throw error;
     }
-    // IMPORTANT: Fail immediately on 429 so the main function can trigger Auto-Fallback
+    // IMPORTANT: Fail immediately on 429
     if (isQuotaError(error) || msg.includes('SAFETY') || msg.includes('blocked')) {
       throw error; 
     }
@@ -178,9 +177,6 @@ async function retryWithBackoff<T>(fn: () => Promise<T>, retries = 3, delay = 10
     throw error;
   }
 }
-
-// Fallback Model ID
-const FALLBACK_MODEL = 'gemini-2.5-flash';
 
 export const generateRevision = async (
   text: string, 
@@ -215,22 +211,7 @@ export const generateRevision = async (
     return result; 
 
   } catch (error: any) {
-    // Auto-Fallback Logic for Quota Errors
-    if (isQuotaError(error) && modelName !== FALLBACK_MODEL && modelName !== 'gemini-flash-lite-latest') {
-        console.warn(`[Auto-Fallback] Model ${modelName} quota exceeded. Switching to ${FALLBACK_MODEL}.`);
-        try {
-            // Retry with Flash model
-            const fallbackResponse = await performGeneration(FALLBACK_MODEL);
-            let result = fallbackResponse.text?.trim() || text;
-            result = result.replace(/^```(?:html|text)?\s*/i, '').replace(/\s*```$/, '').trim();
-            return result;
-        } catch (fallbackError) {
-            // If fallback also fails, throw original error (or fallback error)
-            handleGeminiError(fallbackError, FALLBACK_MODEL);
-            return text;
-        }
-    }
-
+    // Auto-fallback removed as requested
     handleGeminiError(error, modelName);
     return text;
   }
@@ -336,26 +317,7 @@ export const chatWithAssistant = async (
     return { text, sources };
 
   } catch (error: any) {
-    // Auto-Fallback Logic for Quota Errors
-    if (isQuotaError(error) && modelName !== FALLBACK_MODEL && modelName !== 'gemini-flash-lite-latest') {
-       console.warn(`[Auto-Fallback] Chat Model ${modelName} quota exceeded. Switching to ${FALLBACK_MODEL}.`);
-       try {
-          const fallbackResponse = await performChat(FALLBACK_MODEL);
-          const text = fallbackResponse.text || "죄송합니다. 답변을 생성할 수 없습니다.";
-          let sources: SearchSource[] = [];
-          if (fallbackResponse.candidates?.[0]?.groundingMetadata?.groundingChunks) {
-            sources = fallbackResponse.candidates[0].groundingMetadata.groundingChunks
-              .map((chunk: any) => chunk.web)
-              .filter((web: any) => web && web.uri && web.title)
-              .map((web: any) => ({ title: web.title, uri: web.uri }));
-          }
-          return { text: `(Pro 모델 한도 초과로 Flash 모델이 답변합니다)\n\n${text}`, sources };
-       } catch (fallbackError) {
-          handleGeminiError(fallbackError, FALLBACK_MODEL);
-          throw fallbackError;
-       }
-    }
-
+    // Auto-fallback removed as requested
     handleGeminiError(error, modelName);
     throw error;
   }

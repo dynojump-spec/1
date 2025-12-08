@@ -1,4 +1,5 @@
 
+
 import React, { useRef, useEffect, useState, useCallback, useImperativeHandle, forwardRef, useMemo, useLayoutEffect } from 'react';
 import { Wand2, Check, MessageSquare, RefreshCw, Trash2, Zap, Heart, Scissors, Mountain, Languages } from 'lucide-react';
 import { AppSettings, FontType, AIRevisionMode, SnippetType } from '../types';
@@ -154,6 +155,23 @@ const setCaretGlobalPosition = (element: HTMLElement, offset: number) => {
           placeCaretAtEnd(element);
       }
   }
+};
+
+// Helper to calculate text contrast color
+const getContrastColor = (hexColor: string) => {
+  // If no color or invalid, default to light text (for dark bg)
+  if (!hexColor || !hexColor.startsWith('#')) return '#f4f4f5'; // zinc-100
+  
+  // Parse hex
+  const r = parseInt(hexColor.substr(1, 2), 16);
+  const g = parseInt(hexColor.substr(3, 2), 16);
+  const b = parseInt(hexColor.substr(5, 2), 16);
+  
+  // Calculate brightness (YIQ formula)
+  const yiq = ((r * 299) + (g * 587) + (b * 114)) / 1000;
+  
+  // If bright (>128), return dark text. Else return light text.
+  return yiq >= 128 ? '#18181b' : '#f4f4f5'; // zinc-900 vs zinc-100
 };
 
 const Editor = forwardRef<EditorHandle, Props>(({ content, onChange, settings, readOnly = false, onRestore, onPermanentDelete, onProcessingChange }, ref) => {
@@ -852,13 +870,15 @@ const Editor = forwardRef<EditorHandle, Props>(({ content, onChange, settings, r
     wordBreak: 'break-all' as any, 
     overflowWrap: 'break-word' as any,
     textIndent: settings.enableIndentation ? '1em' : '0', // Added text-indent
+    color: getContrastColor(settings.editorBackgroundColor || '#09090b'), // Dynamic Text Color
   }), [settings]);
 
   return (
     <div 
       ref={containerRef} 
-      className="relative w-full max-w-full min-h-full cursor-text"
+      className="relative w-full max-w-full min-h-full cursor-text transition-colors duration-200"
       onClick={handleContainerClick}
+      style={{ backgroundColor: settings.editorBackgroundColor || '#09090b' }} // Apply background to container
     >
       
       {/* Trash Warning Banner */}
@@ -896,7 +916,7 @@ const Editor = forwardRef<EditorHandle, Props>(({ content, onChange, settings, r
         onClick={handleEditorClick}
         onKeyDown={handleKeyDown}
         onPaste={handlePaste}
-        className={`${commonStyles} relative z-10 bg-transparent text-zinc-100 empty:before:content-[attr(data-placeholder)] empty:before:text-zinc-600 ${readOnly ? 'cursor-text opacity-90' : ''}`}
+        className={`${commonStyles} relative z-10 bg-transparent empty:before:content-[attr(data-placeholder)] empty:before:text-zinc-500 ${readOnly ? 'cursor-text opacity-90' : ''}`}
         style={editorStyle}
         spellCheck={false}
         data-placeholder={readOnly ? "" : "여기에 소설을 작성하세요..."}

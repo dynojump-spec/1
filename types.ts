@@ -46,6 +46,10 @@ export interface AppSettings {
   fontType: FontType;
   alignment: 'justify' | 'left';
   enableIndentation?: boolean;
+  
+  // Visual Settings
+  editorBackgroundColor: string; // New: Editor Background Color
+
   snippets: Snippet[];
   aiModel: string; // Editor Model
   
