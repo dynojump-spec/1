@@ -60,16 +60,88 @@ const getPromptForMode = (mode: AIRevisionMode, text: string): string => {
   }
 };
 
-async function retryWithBackoff<T>(fn: () => Promise<T>, retries = 3, delay = 1000): Promise<T> {
+// Helper to translate Gemini errors into friendly Korean messages
+const handleGeminiError = (error: any, modelName: string) => {
+    const msg = error?.message || '';
+    const status = error?.status || error?.code || error?.response?.status;
+    
+    // 1. Quota / Rate Limits (429)
+    if (status === 429 || msg.includes('429') || msg.includes('Quota exceeded') || msg.includes('Too Many Requests')) {
+        throw new Error(`[사용량 한도 초과] 선택하신 모델(${modelName})의 무료 사용량이 초과되었습니다.\n잠시 기다리시거나, 설정에서 더 가벼운 'Flash' 모델로 변경해 주세요.`);
+    }
+
+    // 2. Safety Filters (FinishReason: SAFETY)
+    if (msg.includes('SAFETY') || msg.includes('blocked') || msg.includes('Safety')) {
+        throw new Error(`[안전 필터 차단] AI가 해당 내용을 폭력적이거나 선정적이라고 판단하여 수정을 거부했습니다.\n다른 모델(Flash)을 시도하거나 문장을 조금 다듬어 보세요.`);
+    }
+
+    // 3. Recitation / Copyright
+    if (msg.includes('RECITATION')) {
+        throw new Error(`[저작권/암기 차단] AI가 해당 내용이 기존 저작물과 너무 유사하다고 판단하여 차단했습니다.`);
+    }
+
+    // 4. Cancellation
+    if (msg.includes("Operation cancelled") || msg.includes("aborted") || error?.name === 'AbortError') {
+        throw error; // Re-throw cancellation to be handled silently
+    }
+
+    // 5. Invalid Key
+    if (status === 400 && (msg.includes('API key') || msg.includes('INVALID_ARGUMENT'))) {
+        throw new Error(`[API 키 오류] 유효하지 않은 API 키입니다. 설정에서 키를 다시 확인해주세요.`);
+    }
+
+    // Default
+    throw error;
+};
+
+// Helper for immediate cancellation race
+const raceWithSignal = <T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> => {
+  if (!signal) return promise;
+  if (signal.aborted) return Promise.reject(new Error("Operation cancelled"));
+
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => {
+      const abortHandler = () => {
+        signal.removeEventListener('abort', abortHandler);
+        reject(new Error("Operation cancelled"));
+      };
+      signal.addEventListener('abort', abortHandler);
+    })
+  ]);
+};
+
+// Retry utility (wait logic)
+const wait = (ms: number, signal?: AbortSignal) => new Promise<void>((resolve, reject) => {
+    if (signal?.aborted) {
+        reject(new Error("Operation cancelled"));
+        return;
+    }
+    const timer = setTimeout(() => {
+        resolve();
+        signal?.removeEventListener('abort', abortHandler);
+    }, ms);
+    
+    const abortHandler = () => {
+        clearTimeout(timer);
+        reject(new Error("Operation cancelled"));
+    };
+    signal?.addEventListener('abort', abortHandler);
+});
+
+async function retryWithBackoff<T>(fn: () => Promise<T>, retries = 3, delay = 1000, signal?: AbortSignal): Promise<T> {
   try {
-    return await fn();
+    return await raceWithSignal(fn(), signal);
   } catch (error: any) {
     const msg = error?.message || '';
     const status = error?.status || error?.code;
     
-    // Do not retry if aborted
+    // Do not retry if aborted, 429 (Quota), or Safety Block
     if (msg.includes('aborted') || msg.includes('cancelled') || msg.includes('Operation cancelled')) {
       throw error;
+    }
+    if (status === 429 || msg.includes('SAFETY') || msg.includes('blocked')) {
+      throw error; // Immediately fail for quota or safety
     }
     
     const shouldRetry = retries > 0 && (
@@ -83,8 +155,8 @@ async function retryWithBackoff<T>(fn: () => Promise<T>, retries = 3, delay = 10
 
     if (shouldRetry) {
       console.warn(`API request failed (Status: ${status}). Retrying in ${delay}ms... (${retries} attempts left)`);
-      await new Promise(resolve => setTimeout(resolve, delay));
-      return retryWithBackoff(fn, retries - 1, delay * 2);
+      await wait(delay, signal);
+      return retryWithBackoff(fn, retries - 1, delay * 2, signal);
     }
     
     throw error;
@@ -107,8 +179,6 @@ export const generateRevision = async (
     const ai = new GoogleGenAI({ apiKey: key });
     
     const response = await retryWithBackoff<GenerateContentResponse>(async () => {
-      if (signal?.aborted) throw new Error("Operation cancelled");
-      
       const res = await ai.models.generateContent({
         model: modelName,
         contents: getPromptForMode(mode, text),
@@ -117,23 +187,16 @@ export const generateRevision = async (
           temperature: 0.7, 
         }
       });
-      
-      if (signal?.aborted) throw new Error("Operation cancelled");
       return res;
-    });
+    }, 3, 1000, signal);
 
     let result = response.text?.trim() || text;
     result = result.replace(/^```(?:html|text)?\s*/i, '').replace(/\s*```$/, '').trim();
     
     return result; 
   } catch (error: any) {
-    const msg = error?.message || '';
-    // Suppress logging for cancellation
-    if (msg.includes("Operation cancelled") || msg.includes("aborted") || error?.name === 'AbortError') {
-       throw error;
-    }
-    console.error("Gemini API Error:", error);
-    throw error;
+    handleGeminiError(error, modelName);
+    return text; // Unreachable, but keeps TS happy
   }
 };
 
@@ -252,7 +315,7 @@ export const chatWithAssistant = async (
         tools: [{ googleSearch: {} }],
         systemInstruction: baseInstruction,
       }
-    }));
+    }), 3, 1000);
 
     const text = response.text || "죄송합니다. 답변을 생성할 수 없습니다.";
 
@@ -269,7 +332,7 @@ export const chatWithAssistant = async (
 
     return { text, sources };
   } catch (error) {
-    console.error("Gemini Chat Error:", error);
+    handleGeminiError(error, modelName);
     throw error;
   }
 };
