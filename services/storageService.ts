@@ -1,4 +1,5 @@
 
+
 import { NovelDocument, AppSettings, FontType, SnippetType, AVAILABLE_MODELS, Snippet } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -107,11 +108,11 @@ export const getDefaultSettings = (): AppSettings => ({
   alignment: 'justify',
   enableIndentation: true,
   snippets: DEFAULT_SNIPPETS,
-  aiModel: AVAILABLE_MODELS[0].id,
+  aiModel: 'gemini-2.5-pro', // Explicitly set default to 2.5 Pro
   
   // Default Assistant Models
-  leftAssistantModel: AVAILABLE_MODELS[1].id,
-  rightAssistantModel: AVAILABLE_MODELS[1].id,
+  leftAssistantModel: 'gemini-2.5-pro',
+  rightAssistantModel: 'gemini-2.5-pro',
 
   // Default Personas
   leftAssistantPersona: {

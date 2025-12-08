@@ -60,14 +60,21 @@ const getPromptForMode = (mode: AIRevisionMode, text: string): string => {
   }
 };
 
+// Helper to detect Quota errors
+const isQuotaError = (error: any): boolean => {
+  const msg = error?.message || '';
+  const status = error?.status || error?.code || error?.response?.status;
+  return status === 429 || msg.includes('429') || msg.includes('Quota exceeded') || msg.includes('Too Many Requests') || msg.includes('resource has been exhausted');
+};
+
 // Helper to translate Gemini errors into friendly Korean messages
 const handleGeminiError = (error: any, modelName: string) => {
     const msg = error?.message || '';
     const status = error?.status || error?.code || error?.response?.status;
     
     // 1. Quota / Rate Limits (429)
-    if (status === 429 || msg.includes('429') || msg.includes('Quota exceeded') || msg.includes('Too Many Requests')) {
-        throw new Error(`[사용량 한도 초과] 선택하신 모델(${modelName})의 무료 사용량이 초과되었습니다.\n잠시 기다리시거나, 설정에서 더 가벼운 'Flash' 모델로 변경해 주세요.`);
+    if (isQuotaError(error)) {
+        throw new Error(`[사용량 한도 초과] 선택하신 모델(${modelName})의 무료 사용량이 초과되었습니다.\n잠시 기다리시거나, 설정에서 더 가벼운 'Flash' 모델로 변경해 주세요.\n(Tip: 자동으로 Flash 모델로 전환을 시도했습니다.)`);
     }
 
     // 2. Safety Filters (FinishReason: SAFETY)
@@ -140,8 +147,9 @@ async function retryWithBackoff<T>(fn: () => Promise<T>, retries = 3, delay = 10
     if (msg.includes('aborted') || msg.includes('cancelled') || msg.includes('Operation cancelled')) {
       throw error;
     }
-    if (status === 429 || msg.includes('SAFETY') || msg.includes('blocked')) {
-      throw error; // Immediately fail for quota or safety
+    // IMPORTANT: Fail immediately on 429 so the main function can trigger Auto-Fallback
+    if (isQuotaError(error) || msg.includes('SAFETY') || msg.includes('blocked')) {
+      throw error; 
     }
     
     const shouldRetry = retries > 0 && (
@@ -163,6 +171,9 @@ async function retryWithBackoff<T>(fn: () => Promise<T>, retries = 3, delay = 10
   }
 }
 
+// Fallback Model ID
+const FALLBACK_MODEL = 'gemini-2.5-flash';
+
 export const generateRevision = async (
   text: string, 
   mode: AIRevisionMode,
@@ -170,17 +181,14 @@ export const generateRevision = async (
   apiKey?: string,
   signal?: AbortSignal
 ): Promise<string> => {
-  try {
-    const key = (apiKey || process.env.API_KEY || '').trim();
-    if (!key) {
-      throw new Error("API Key is missing. Please check your settings.");
-    }
+  const key = (apiKey || process.env.API_KEY || '').trim();
+  if (!key) throw new Error("API Key is missing. Please check your settings.");
 
+  const performGeneration = async (targetModel: string) => {
     const ai = new GoogleGenAI({ apiKey: key });
-    
-    const response = await retryWithBackoff<GenerateContentResponse>(async () => {
+    return await retryWithBackoff<GenerateContentResponse>(async () => {
       const res = await ai.models.generateContent({
-        model: modelName,
+        model: targetModel,
         contents: getPromptForMode(mode, text),
         config: {
           systemInstruction: SYSTEM_INSTRUCTION,
@@ -189,14 +197,33 @@ export const generateRevision = async (
       });
       return res;
     }, 3, 1000, signal);
+  };
 
+  try {
+    const response = await performGeneration(modelName);
     let result = response.text?.trim() || text;
     result = result.replace(/^```(?:html|text)?\s*/i, '').replace(/\s*```$/, '').trim();
-    
     return result; 
+
   } catch (error: any) {
+    // Auto-Fallback Logic for Quota Errors
+    if (isQuotaError(error) && modelName !== FALLBACK_MODEL && modelName !== 'gemini-flash-lite-latest') {
+        console.warn(`[Auto-Fallback] Model ${modelName} quota exceeded. Switching to ${FALLBACK_MODEL}.`);
+        try {
+            // Retry with Flash model
+            const fallbackResponse = await performGeneration(FALLBACK_MODEL);
+            let result = fallbackResponse.text?.trim() || text;
+            result = result.replace(/^```(?:html|text)?\s*/i, '').replace(/\s*```$/, '').trim();
+            return result;
+        } catch (fallbackError) {
+            // If fallback also fails, throw original error (or fallback error)
+            handleGeminiError(fallbackError, FALLBACK_MODEL);
+            return text;
+        }
+    }
+
     handleGeminiError(error, modelName);
-    return text; // Unreachable, but keeps TS happy
+    return text;
   }
 };
 
@@ -214,27 +241,19 @@ export const chatWithAssistant = async (
   attachments: ChatMessage['attachments'] = [],
   persona?: AssistantPersona
 ): Promise<ChatResponse> => {
-  try {
-    const key = (apiKey || process.env.API_KEY || '').trim();
-    if (!key) {
-      throw new Error("API Key is missing. Please check your settings.");
-    }
+  const key = (apiKey || process.env.API_KEY || '').trim();
+  if (!key) throw new Error("API Key is missing. Please check your settings.");
 
-    const ai = new GoogleGenAI({ apiKey: key });
-
-    const contents = history
+  // Prepare Contents
+  const contents = history
       .filter(msg => !msg.isLoading && (msg.text || (msg.attachments && msg.attachments.length > 0)))
       .map(msg => {
         const parts: Part[] = [];
-        
         if (msg.attachments) {
           msg.attachments.forEach(att => {
             if (att.type === 'image') {
               parts.push({
-                inlineData: {
-                  mimeType: att.mimeType,
-                  data: att.data 
-                }
+                inlineData: { mimeType: att.mimeType, data: att.data }
               });
             } else {
               parts.push({
@@ -243,95 +262,90 @@ export const chatWithAssistant = async (
             }
           });
         }
-        
-        if (msg.text) {
-          parts.push({ text: msg.text });
-        }
-
-        return {
-          role: msg.role,
-          parts: parts
-        };
+        if (msg.text) parts.push({ text: msg.text });
+        return { role: msg.role, parts: parts };
       });
     
-    const newParts: Part[] = [];
-    
-    if (attachments && attachments.length > 0) {
+  const newParts: Part[] = [];
+  if (attachments && attachments.length > 0) {
       attachments.forEach(att => {
          if (att.type === 'image') {
-           newParts.push({
-             inlineData: {
-               mimeType: att.mimeType,
-               data: att.data
-             }
-           });
+           newParts.push({ inlineData: { mimeType: att.mimeType, data: att.data } });
          } else {
-           newParts.push({
-             text: `[File Attachment: ${att.name}]\n${att.data}\n`
-           });
+           newParts.push({ text: `[File Attachment: ${att.name}]\n${att.data}\n` });
          }
       });
-    }
+  }
+  newParts.push({ text: newMessage });
+  contents.push({ role: 'user', parts: newParts });
 
-    newParts.push({ text: newMessage });
+  // Build System Instruction
+  let baseInstruction = "You are a helpful assistant for a web novel writer (Google Gemini). You can search the web for real-time information if needed. Provide concise, creative, and accurate answers regarding plotting, character names, settings, synonyms, and general knowledge. You communicate in Korean. When files are attached, analyze them to assist the user. IMPORTANT: Use **bold text** (**text**) to emphasize key terms, headers, names, or important conclusions to improve readability.";
+  if (persona) {
+      let personaInstruction = "";
+      if (persona.instruction && persona.instruction.trim()) {
+          personaInstruction += `\n\n[ROLE & INSTRUCTION]\n${persona.instruction}`;
+      }
+      if (persona.knowledge && persona.knowledge.trim()) {
+          personaInstruction += `\n\n[KNOWLEDGE BASE / REFERENCE]\n${persona.knowledge}`;
+      }
+      if (persona.files && persona.files.length > 0) {
+         personaInstruction += `\n\n[ATTACHED KNOWLEDGE FILES]`;
+         persona.files.forEach(file => {
+           personaInstruction += `\n--- START OF FILE: ${file.name} ---\n${file.content}\n--- END OF FILE: ${file.name} ---\n`;
+         });
+      }
+      if (personaInstruction) {
+          baseInstruction = `${baseInstruction}${personaInstruction}`;
+      }
+  }
 
-    contents.push({
-      role: 'user',
-      parts: newParts
-    });
-
-    // Build Dynamic System Instruction based on Persona
-    let baseInstruction = "You are a helpful assistant for a web novel writer (Google Gemini). You can search the web for real-time information if needed. Provide concise, creative, and accurate answers regarding plotting, character names, settings, synonyms, and general knowledge. You communicate in Korean. When files are attached, analyze them to assist the user. IMPORTANT: Use **bold text** (**text**) to emphasize key terms, headers, names, or important conclusions to improve readability.";
-    
-    if (persona) {
-        let personaInstruction = "";
-        if (persona.instruction && persona.instruction.trim()) {
-            personaInstruction += `\n\n[ROLE & INSTRUCTION]\n${persona.instruction}`;
-        }
-        
-        // Add text-based Knowledge
-        if (persona.knowledge && persona.knowledge.trim()) {
-            personaInstruction += `\n\n[KNOWLEDGE BASE / REFERENCE]\n${persona.knowledge}`;
-        }
-
-        // Add Attached Files to Knowledge Base
-        if (persona.files && persona.files.length > 0) {
-           personaInstruction += `\n\n[ATTACHED KNOWLEDGE FILES]`;
-           persona.files.forEach(file => {
-             personaInstruction += `\n--- START OF FILE: ${file.name} ---\n${file.content}\n--- END OF FILE: ${file.name} ---\n`;
-           });
-        }
-        
-        // If persona instruction exists, it overrides or appends to the base
-        if (personaInstruction) {
-            baseInstruction = `${baseInstruction}${personaInstruction}`;
-        }
-    }
-
-    const response = await retryWithBackoff<GenerateContentResponse>(() => ai.models.generateContent({
-      model: modelName,
+  const performChat = async (targetModel: string) => {
+    const ai = new GoogleGenAI({ apiKey: key });
+    return await retryWithBackoff<GenerateContentResponse>(() => ai.models.generateContent({
+      model: targetModel,
       contents: contents,
       config: {
         tools: [{ googleSearch: {} }],
         systemInstruction: baseInstruction,
       }
     }), 3, 1000);
+  };
 
+  try {
+    const response = await performChat(modelName);
+    
     const text = response.text || "죄송합니다. 답변을 생성할 수 없습니다.";
-
     let sources: SearchSource[] = [];
     if (response.candidates?.[0]?.groundingMetadata?.groundingChunks) {
       sources = response.candidates[0].groundingMetadata.groundingChunks
         .map((chunk: any) => chunk.web)
         .filter((web: any) => web && web.uri && web.title)
-        .map((web: any) => ({
-          title: web.title,
-          uri: web.uri
-        }));
+        .map((web: any) => ({ title: web.title, uri: web.uri }));
+    }
+    return { text, sources };
+
+  } catch (error: any) {
+    // Auto-Fallback Logic for Quota Errors
+    if (isQuotaError(error) && modelName !== FALLBACK_MODEL && modelName !== 'gemini-flash-lite-latest') {
+       console.warn(`[Auto-Fallback] Chat Model ${modelName} quota exceeded. Switching to ${FALLBACK_MODEL}.`);
+       try {
+          const fallbackResponse = await performChat(FALLBACK_MODEL);
+          const text = fallbackResponse.text || "죄송합니다. 답변을 생성할 수 없습니다.";
+          let sources: SearchSource[] = [];
+          if (fallbackResponse.candidates?.[0]?.groundingMetadata?.groundingChunks) {
+            sources = fallbackResponse.candidates[0].groundingMetadata.groundingChunks
+              .map((chunk: any) => chunk.web)
+              .filter((web: any) => web && web.uri && web.title)
+              .map((web: any) => ({ title: web.title, uri: web.uri }));
+          }
+          return { text: `(Pro 모델 한도 초과로 Flash 모델이 답변합니다)\n\n${text}`, sources };
+       } catch (fallbackError) {
+          handleGeminiError(fallbackError, FALLBACK_MODEL);
+          throw fallbackError;
+       }
     }
 
-    return { text, sources };
-  } catch (error) {
     handleGeminiError(error, modelName);
     throw error;
   }

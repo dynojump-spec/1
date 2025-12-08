@@ -1,4 +1,5 @@
 
+
 export interface NovelDocument {
   id: string;
   title: string;
@@ -65,9 +66,10 @@ export interface AppSettings {
 }
 
 // Define available models for the UI
+// User explicitly requested gemini-2.5-pro to be available
 export const AVAILABLE_MODELS = [
-  { id: 'gemini-3-pro-preview', name: 'Gemini 3.0 Pro (최고 성능/Preview)' },
-  { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro (고성능/밸런스)' },
+  { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro (사용자 지정)' },
+  { id: 'gemini-3-pro-preview', name: 'Gemini 3.0 Pro (Preview)' },
   { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash (빠른 속도)' },
   { id: 'gemini-flash-lite-latest', name: 'Gemini 2.5 Flash Lite (초고속/경량)' },
 ];
