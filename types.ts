@@ -1,6 +1,7 @@
 
 
 
+
 export interface NovelDocument {
   id: string;
   title: string;
@@ -71,12 +72,12 @@ export interface AppSettings {
 }
 
 // Define available models for the UI
-// Updated: 3.0 Preview removed due to access stability issues.
-// 2.0 Pro Experimental is currently the most capable stable model.
+// Request: Add 2.5 PRO and 3.0 PRO explicitly.
 export const AVAILABLE_MODELS = [
   { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash (권장/빠름)' },
-  { id: 'gemini-2.0-pro-exp-02-05', name: 'Gemini 2.0 Pro (최고성능/추론)' },
-  { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash (안정적/균형)' },
+  { id: 'gemini-3-pro-preview', name: 'Gemini 3.0 Pro (최신/강력함)' },
+  { id: 'gemini-2.5-pro-preview', name: 'Gemini 2.5 Pro (고성능)' },
+  { id: 'gemini-2.0-pro-exp-02-05', name: 'Gemini 2.0 Pro (Experimental)' },
 ];
 
 export enum AIRevisionMode {

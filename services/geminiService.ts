@@ -2,6 +2,8 @@
 
 
 
+
+
 import { GoogleGenAI, GenerateContentResponse, Part, HarmCategory, HarmBlockThreshold } from "@google/genai";
 import { AIRevisionMode, ChatMessage, SearchSource, AssistantPersona } from '../types';
 
@@ -110,7 +112,7 @@ const handleGeminiError = (error: any, modelName: string) => {
     
     // 6. Not Found (Model ID invalid)
     if (status === 404 || msg.includes('Not Found') || msg.includes('models/')) {
-        throw new Error(`[모델 오류] 선택하신 모델(${modelName})을 찾을 수 없거나 접근 권한이 없습니다.\n설정에서 'Gemini 2.0 Pro' 또는 'Flash'로 모델을 변경해주세요.`);
+        throw new Error(`[모델 찾을 수 없음] 선택하신 모델(${modelName})을 현재 API 키로 사용할 수 없습니다.\n설정에서 다른 모델(Flash 또는 2.0 Pro)을 선택해주세요.`);
     }
 
     // Default

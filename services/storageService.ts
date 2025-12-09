@@ -1,6 +1,8 @@
 
 
 
+
+
 import { NovelDocument, AppSettings, FontType, SnippetType, AVAILABLE_MODELS, Snippet } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -289,13 +291,14 @@ export const getLocalSettings = (): AppSettings | null => {
     }));
   }
 
-  // Model Migration Logic: Replace deprecated/error-prone models with working ones
+  // Model Migration Logic
+  // Only migrate definitely broken/deprecated models. Allow updated 3.0/2.5 Pro models to persist.
   const migrateModel = (modelName: string) => {
     if (!modelName) return defaults.aiModel;
     
-    // Explicitly migrate 1.5 Pro or 3.0 Pro Preview (if unstable) to 2.0 Pro
-    if (modelName.includes('1.5-pro') || modelName === 'gemini-pro' || modelName.includes('gemini-3')) {
-      return 'gemini-2.0-pro-exp-02-05'; // Migrate to stable modern Pro
+    // Explicitly migrate old 1.5 Pro to 2.5 Pro or similar
+    if (modelName.includes('1.5-pro') || modelName === 'gemini-pro') {
+      return 'gemini-2.5-pro-preview'; 
     }
     
     // Migrate old Flash to new Flash
@@ -303,8 +306,9 @@ export const getLocalSettings = (): AppSettings | null => {
       return 'gemini-2.5-flash';
     }
 
-    // Check if the stored model actually exists in current options
-    // If user manually set something valid, keep it.
+    // Do NOT auto-migrate 3.0 or 2.0 Pro models if user selected them.
+    // We trust the user selection from the dropdown.
+
     return modelName;
   };
 
