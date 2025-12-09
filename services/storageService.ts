@@ -1,5 +1,6 @@
 
 
+
 import { NovelDocument, AppSettings, FontType, SnippetType, AVAILABLE_MODELS, Snippet } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -291,12 +292,19 @@ export const getLocalSettings = (): AppSettings | null => {
   // Model Migration Logic: Replace deprecated/error-prone models with working ones
   const migrateModel = (modelName: string) => {
     if (!modelName) return defaults.aiModel;
-    if (modelName.includes('1.5-pro') || modelName === 'gemini-2.5-pro') {
-      return 'gemini-3-pro-preview';
+    
+    // Explicitly migrate 1.5 Pro or 3.0 Pro Preview (if unstable) to 2.0 Pro
+    if (modelName.includes('1.5-pro') || modelName === 'gemini-pro' || modelName.includes('gemini-3')) {
+      return 'gemini-2.0-pro-exp-02-05'; // Migrate to stable modern Pro
     }
+    
+    // Migrate old Flash to new Flash
     if (modelName.includes('1.5-flash')) {
       return 'gemini-2.5-flash';
     }
+
+    // Check if the stored model actually exists in current options
+    // If user manually set something valid, keep it.
     return modelName;
   };
 
@@ -304,7 +312,7 @@ export const getLocalSettings = (): AppSettings | null => {
 
   // Migration: If new fields missing, fill with defaults
   if (!parsed.leftAssistantModel) parsed.leftAssistantModel = defaults.leftAssistantModel;
-  // If user had assistantModel (old key), use it, otherwise default. Also migrate it.
+  
   if (!parsed.rightAssistantModel) {
      parsed.rightAssistantModel = parsed.assistantModel ? migrateModel(parsed.assistantModel) : defaults.rightAssistantModel;
   } else {

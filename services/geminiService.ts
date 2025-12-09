@@ -1,5 +1,7 @@
 
 
+
+
 import { GoogleGenAI, GenerateContentResponse, Part, HarmCategory, HarmBlockThreshold } from "@google/genai";
 import { AIRevisionMode, ChatMessage, SearchSource, AssistantPersona } from '../types';
 
@@ -105,6 +107,11 @@ const handleGeminiError = (error: any, modelName: string) => {
     if (status === 400 && (msg.includes('API key') || msg.includes('INVALID_ARGUMENT'))) {
         throw new Error(`[API 키 오류] 유효하지 않은 API 키입니다. 설정에서 키를 다시 확인해주세요.`);
     }
+    
+    // 6. Not Found (Model ID invalid)
+    if (status === 404 || msg.includes('Not Found') || msg.includes('models/')) {
+        throw new Error(`[모델 오류] 선택하신 모델(${modelName})을 찾을 수 없거나 접근 권한이 없습니다.\n설정에서 'Gemini 2.0 Pro' 또는 'Flash'로 모델을 변경해주세요.`);
+    }
 
     // Default
     throw error;
@@ -152,12 +159,12 @@ async function retryWithBackoff<T>(fn: () => Promise<T>, retries = 3, delay = 10
     const msg = error?.message || '';
     const status = error?.status || error?.code;
     
-    // Do not retry if aborted, 429 (Quota), or Safety Block
+    // Do not retry if aborted, 429 (Quota), or Safety Block, or 404 (Model Not Found)
     if (msg.includes('aborted') || msg.includes('cancelled') || msg.includes('Operation cancelled')) {
       throw error;
     }
-    // IMPORTANT: Fail immediately on 429
-    if (isQuotaError(error) || msg.includes('SAFETY') || msg.includes('blocked')) {
+    // IMPORTANT: Fail immediately on 429, 404, or Safety
+    if (isQuotaError(error) || msg.includes('SAFETY') || msg.includes('blocked') || status === 404) {
       throw error; 
     }
     
