@@ -1,9 +1,3 @@
-
-
-
-
-
-
 import { GoogleGenAI, GenerateContentResponse, Part, HarmCategory, HarmBlockThreshold } from "@google/genai";
 import { AIRevisionMode, ChatMessage, SearchSource, AssistantPersona } from '../types';
 
@@ -87,7 +81,16 @@ const handleGeminiError = (error: any, modelName: string) => {
     
     // 1. Quota / Rate Limits (429)
     if (isQuotaError(error)) {
-        throw new Error(`[사용량 한도 초과] 선택하신 모델(${modelName})의 무료 사용량이 초과되었습니다.\n잠시 기다리시거나, 설정에서 더 가벼운 'Flash' 모델로 변경해 주세요.`);
+        const isPro = modelName.includes('pro');
+        const modelLabel = isPro ? 'Pro' : 'Flash';
+        
+        throw new Error(
+            `[사용량 한도 초과 (429)]\n` +
+            `선택하신 '${modelLabel}' 모델의 무료 사용량이 소진되었습니다.\n\n` +
+            `1. **잠시 기다리기 (RPM 제한)**: 단순 과부하라면 1~2분 뒤에 해결됩니다.\n` +
+            `2. **내일 다시 시도 (RPD 제한)**: 하루 할당량을 모두 쓴 경우, 한국 시간 오후 4~5시(미국 서부 자정)에 리셋됩니다.\n\n` +
+            `팁: 설정에서 다른 모델(Flash ↔ Pro)로 변경하면 즉시 사용 가능할 수 있습니다.`
+        );
     }
 
     // 2. Safety Filters (FinishReason: SAFETY)
@@ -112,7 +115,7 @@ const handleGeminiError = (error: any, modelName: string) => {
     
     // 6. Not Found (Model ID invalid)
     if (status === 404 || msg.includes('Not Found') || msg.includes('models/')) {
-        throw new Error(`[모델 찾을 수 없음] 선택하신 모델(${modelName})을 현재 API 키로 사용할 수 없습니다.\n설정에서 다른 모델(Flash 또는 2.0 Pro)을 선택해주세요.`);
+        throw new Error(`[모델 찾을 수 없음] 선택하신 모델(${modelName})을 현재 API 키로 사용할 수 없습니다.\n설정에서 다른 모델(Flash 또는 3.0 Pro)을 선택해주세요.`);
     }
 
     // Default
