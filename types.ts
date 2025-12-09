@@ -70,14 +70,11 @@ export interface AppSettings {
 }
 
 // Define available models for the UI
-// Updated to reflect the actual latest Google Gemini models plus User requested 2.5 versions
+// Updated to reflect the actual latest Google Gemini models (2.5 Flash / 3.0 Pro Preview)
 export const AVAILABLE_MODELS = [
-  { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro (사용자 지정)' },
-  { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash (사용자 지정)' },
-  { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro (고지능/소설용 추천)' },
-  { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash (최신/차세대)' },
-  { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash (빠른 속도)' },
-  { id: 'gemini-1.5-flash-8b', name: 'Gemini 1.5 Flash-8B (초경량/최속)' },
+  { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash (권장/빠름)' },
+  { id: 'gemini-3-pro-preview', name: 'Gemini 3.0 Pro Preview (고지능/추론)' },
+  { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash (안정적/균형)' },
 ];
 
 export enum AIRevisionMode {

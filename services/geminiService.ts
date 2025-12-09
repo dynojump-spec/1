@@ -183,7 +183,7 @@ async function retryWithBackoff<T>(fn: () => Promise<T>, retries = 3, delay = 10
 export const generateRevision = async (
   text: string, 
   mode: AIRevisionMode,
-  modelName: string = 'gemini-1.5-pro',
+  modelName: string = 'gemini-2.5-flash',
   apiKey?: string,
   signal?: AbortSignal
 ): Promise<string> => {
@@ -228,7 +228,7 @@ interface ChatResponse {
 export const chatWithAssistant = async (
   history: ChatMessage[],
   newMessage: string,
-  modelName: string = 'gemini-1.5-flash',
+  modelName: string = 'gemini-2.5-flash',
   apiKey?: string,
   attachments: ChatMessage['attachments'] = [],
   persona?: AssistantPersona

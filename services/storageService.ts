@@ -109,11 +109,11 @@ export const getDefaultSettings = (): AppSettings => ({
   enableIndentation: true,
   editorBackgroundColor: '#09090b', // Default Dark (Zinc-950)
   snippets: DEFAULT_SNIPPETS,
-  aiModel: 'gemini-1.5-pro', // Updated to the real stable Pro model
+  aiModel: 'gemini-2.5-flash', // Updated default
   
   // Default Assistant Models
-  leftAssistantModel: 'gemini-1.5-pro',
-  rightAssistantModel: 'gemini-1.5-pro',
+  leftAssistantModel: 'gemini-2.5-flash',
+  rightAssistantModel: 'gemini-2.5-flash',
 
   // Default Personas
   leftAssistantPersona: {
@@ -278,6 +278,7 @@ export const getLocalSettings = (): AppSettings | null => {
   const parsed = JSON.parse(data);
   const defaults = getDefaultSettings();
   
+  // Snippets Migration
   if (!parsed.snippets) {
     parsed.snippets = [];
   } else {
@@ -287,12 +288,31 @@ export const getLocalSettings = (): AppSettings | null => {
     }));
   }
 
-  if (!parsed.aiModel) parsed.aiModel = defaults.aiModel;
+  // Model Migration Logic: Replace deprecated/error-prone models with working ones
+  const migrateModel = (modelName: string) => {
+    if (!modelName) return defaults.aiModel;
+    if (modelName.includes('1.5-pro') || modelName === 'gemini-2.5-pro') {
+      return 'gemini-3-pro-preview';
+    }
+    if (modelName.includes('1.5-flash')) {
+      return 'gemini-2.5-flash';
+    }
+    return modelName;
+  };
+
+  parsed.aiModel = migrateModel(parsed.aiModel || defaults.aiModel);
 
   // Migration: If new fields missing, fill with defaults
   if (!parsed.leftAssistantModel) parsed.leftAssistantModel = defaults.leftAssistantModel;
-  if (!parsed.rightAssistantModel) parsed.rightAssistantModel = parsed.assistantModel || defaults.rightAssistantModel; // Use old assistantModel if available
+  // If user had assistantModel (old key), use it, otherwise default. Also migrate it.
+  if (!parsed.rightAssistantModel) {
+     parsed.rightAssistantModel = parsed.assistantModel ? migrateModel(parsed.assistantModel) : defaults.rightAssistantModel;
+  } else {
+     parsed.rightAssistantModel = migrateModel(parsed.rightAssistantModel);
+  }
   
+  parsed.leftAssistantModel = migrateModel(parsed.leftAssistantModel);
+
   if (!parsed.leftAssistantPersona) parsed.leftAssistantPersona = defaults.leftAssistantPersona;
   if (!parsed.rightAssistantPersona) parsed.rightAssistantPersona = defaults.rightAssistantPersona;
 
