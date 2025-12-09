@@ -109,11 +109,11 @@ export const getDefaultSettings = (): AppSettings => ({
   enableIndentation: true,
   editorBackgroundColor: '#09090b', // Default Dark (Zinc-950)
   snippets: DEFAULT_SNIPPETS,
-  aiModel: 'gemini-2.5-pro', // Explicitly set default to 2.5 Pro
+  aiModel: 'gemini-1.5-pro', // Updated to the real stable Pro model
   
   // Default Assistant Models
-  leftAssistantModel: 'gemini-2.5-pro',
-  rightAssistantModel: 'gemini-2.5-pro',
+  leftAssistantModel: 'gemini-1.5-pro',
+  rightAssistantModel: 'gemini-1.5-pro',
 
   // Default Personas
   leftAssistantPersona: {
