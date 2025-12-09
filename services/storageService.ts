@@ -1,8 +1,3 @@
-
-
-
-
-
 import { NovelDocument, AppSettings, FontType, SnippetType, AVAILABLE_MODELS, Snippet } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -292,24 +287,21 @@ export const getLocalSettings = (): AppSettings | null => {
   }
 
   // Model Migration Logic
-  // Only migrate definitely broken/deprecated models. Allow updated 3.0/2.5 Pro models to persist.
+  // Updated: Strict cleanup of invalid 'Pro' models to fix API errors.
   const migrateModel = (modelName: string) => {
     if (!modelName) return defaults.aiModel;
     
-    // Explicitly migrate old 1.5 Pro to 2.5 Pro or similar
-    if (modelName.includes('1.5-pro') || modelName === 'gemini-pro') {
-      return 'gemini-2.5-pro-preview'; 
+    // Valid models list
+    const validModels = ['gemini-2.5-flash', 'gemini-3-pro-preview'];
+    
+    if (validModels.includes(modelName)) {
+      return modelName;
     }
     
-    // Migrate old Flash to new Flash
-    if (modelName.includes('1.5-flash')) {
-      return 'gemini-2.5-flash';
-    }
-
-    // Do NOT auto-migrate 3.0 or 2.0 Pro models if user selected them.
-    // We trust the user selection from the dropdown.
-
-    return modelName;
+    // If it's 2.0 Pro Exp, 2.5 Pro (Invalid), 1.5 Pro (Deprecated), or anything else
+    // Fallback to the most stable Flash model to ensure the app works.
+    // The user can manually upgrade to 3.0 Pro in settings later.
+    return 'gemini-2.5-flash';
   };
 
   parsed.aiModel = migrateModel(parsed.aiModel || defaults.aiModel);
