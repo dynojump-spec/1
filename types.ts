@@ -1,3 +1,4 @@
+
 export interface NovelDocument {
   id: string;
   title: string;
@@ -68,11 +69,13 @@ export interface AppSettings {
 }
 
 // Define available models for the UI
-// Fixed: Removed non-existent/experimental '2.5 Pro' and '2.0 Pro' models which cause API errors.
-// Only keeping the strictly supported and stable models.
+// Updated: Added 2.0 Pro, 2.5 Pro as requested, and Thinking model.
 export const AVAILABLE_MODELS = [
   { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash (권장/매우빠름)' },
-  { id: 'gemini-3-pro-preview', name: 'Gemini 3.0 Pro (최신/고성능/Preview)' },
+  { id: 'gemini-2.0-pro-exp-02-05', name: 'Gemini 2.0 Pro (Exp/강력추천)' },
+  { id: 'gemini-3-pro-preview', name: 'Gemini 3.0 Pro (최신/Preview)' },
+  { id: 'gemini-2.5-pro-preview', name: 'Gemini 2.5 Pro (요청버전/Preview)' },
+  { id: 'gemini-2.0-flash-thinking-exp-01-21', name: 'Gemini 2.0 Flash Thinking (논리적)' },
 ];
 
 export enum AIRevisionMode {

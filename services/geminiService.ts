@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, GenerateContentResponse, Part, HarmCategory, HarmBlockThreshold } from "@google/genai";
 import { AIRevisionMode, ChatMessage, SearchSource, AssistantPersona } from '../types';
 
@@ -87,9 +88,10 @@ const handleGeminiError = (error: any, modelName: string) => {
         throw new Error(
             `[사용량 한도 초과 (429)]\n` +
             `선택하신 '${modelLabel}' 모델의 무료 사용량이 소진되었습니다.\n\n` +
-            `1. **잠시 기다리기 (RPM 제한)**: 단순 과부하라면 1~2분 뒤에 해결됩니다.\n` +
-            `2. **내일 다시 시도 (RPD 제한)**: 하루 할당량을 모두 쓴 경우, 한국 시간 오후 4~5시(미국 서부 자정)에 리셋됩니다.\n\n` +
-            `팁: 설정에서 다른 모델(Flash ↔ Pro)로 변경하면 즉시 사용 가능할 수 있습니다.`
+            `[언제 다시 쓸 수 있나요?]\n` +
+            `1. **분당 제한(RPM)**: 너무 빨리 요청했습니다. **1~2분 뒤**에 다시 시도하세요.\n` +
+            `2. **일일 제한(RPD)**: 하루 할당량을 모두 썼습니다. **한국 시간 오후 4시~5시(미국 서부 자정)**에 리셋됩니다.\n\n` +
+            `팁: 급하시다면 설정에서 'Gemini 2.5 Flash'로 변경해보세요.`
         );
     }
 
@@ -115,7 +117,13 @@ const handleGeminiError = (error: any, modelName: string) => {
     
     // 6. Not Found (Model ID invalid)
     if (status === 404 || msg.includes('Not Found') || msg.includes('models/')) {
-        throw new Error(`[모델 찾을 수 없음] 선택하신 모델(${modelName})을 현재 API 키로 사용할 수 없습니다.\n설정에서 다른 모델(Flash 또는 3.0 Pro)을 선택해주세요.`);
+        throw new Error(
+            `[모델 찾을 수 없음 (404)]\n` +
+            `선택하신 '${modelName}' 모델을 현재 API 키로 사용할 수 없거나, 구글에서 더 이상 지원하지 않습니다.\n\n` +
+            `해결 방법:\n` +
+            `1. 설정에서 **'Gemini 2.0 Pro'** 또는 **'Flash'** 모델로 변경해주세요.\n` +
+            `2. (Preview 모델의 경우) 구글 정책에 따라 특정 계정에서만 접근 가능할 수 있습니다.`
+        );
     }
 
     // Default
