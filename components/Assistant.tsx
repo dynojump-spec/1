@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Bot, User, Loader2, X, Sparkles, ExternalLink, Paperclip, FileText, Image as ImageIcon, Trash2, Plus, MessageSquare, Menu } from 'lucide-react';
+import { Send, Bot, User, Loader2, X, Sparkles, ExternalLink, Paperclip, FileText, Image as ImageIcon, Trash2, Plus, MessageSquare, Menu, Globe, RotateCcw, ArrowRight, ArrowLeft } from 'lucide-react';
 import { ChatMessage, AppSettings, ChatSession, Attachment } from '../types';
 import { chatWithAssistant } from '../services/geminiService';
 import { v4 as uuidv4 } from 'uuid';
@@ -40,12 +40,17 @@ const Assistant: React.FC<Props> = ({ isOpen, onClose, settings, storageId = 'de
     return localStorage.getItem(STORAGE_KEY_ACTIVE) || null;
   });
 
-  const [view, setView] = useState<'chat' | 'list'>('chat');
+  const [view, setView] = useState<'chat' | 'list' | 'external' | 'browser'>('chat');
 
   // --- State: Active Chat ---
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+  
+  // --- State: Browser ---
+  const [browserUrl, setBrowserUrl] = useState('https://namu.wiki/w/%EB%8C%80%EB%AC%B8'); // Default to Namu Wiki (often allows embedding)
+  const [urlInput, setUrlInput] = useState('https://namu.wiki/w/%EB%8C%80%EB%AC%B8');
+  const iframeRef = useRef<HTMLIFrameElement>(null);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -290,6 +295,22 @@ const Assistant: React.FC<Props> = ({ isOpen, onClose, settings, storageId = 'de
     setAttachments(prev => prev.filter(a => a.id !== id));
   };
 
+  // --- Handlers: Browser ---
+  const handleUrlSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    let url = urlInput.trim();
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      url = 'https://' + url;
+    }
+    setBrowserUrl(url);
+    setUrlInput(url);
+  };
+
+  const navigateBrowser = (url: string) => {
+     setBrowserUrl(url);
+     setUrlInput(url);
+  };
+
   // --- Render ---
 
   if (!isOpen) return null;
@@ -309,10 +330,32 @@ const Assistant: React.FC<Props> = ({ isOpen, onClose, settings, storageId = 'de
            )}
            <div className="flex items-center gap-2 text-zinc-100 font-bold overflow-hidden">
             <Bot size={18} className="text-purple-400 shrink-0" />
-            <span className="truncate">{view === 'chat' ? (activeSession?.title || displayTitle) : `${displayTitle} (목록)`}</span>
+            <span className="truncate">
+              {view === 'external' ? 'Gemini 연결' : 
+               view === 'browser' ? '웹 브라우저' :
+               view === 'chat' ? (activeSession?.title || displayTitle) : `${displayTitle} (목록)`}
+            </span>
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {view !== 'browser' && (
+             <button
+               onClick={() => setView('browser')}
+               className="p-1.5 text-zinc-400 hover:text-blue-400 rounded-md hover:bg-zinc-800 transition-colors"
+               title="웹 브라우저 (자료 검색)"
+             >
+               <Globe size={18} />
+             </button>
+          )}
+          {view !== 'external' && view !== 'browser' && (
+            <button 
+              onClick={() => setView('external')}
+              className="p-1.5 text-zinc-400 hover:text-yellow-400 rounded-md hover:bg-zinc-800 transition-colors"
+              title="Google Gemini (Gems) 열기"
+            >
+              <Sparkles size={18} />
+            </button>
+          )}
           {view === 'chat' && (
             <button 
               onClick={createNewSession}
@@ -320,6 +363,15 @@ const Assistant: React.FC<Props> = ({ isOpen, onClose, settings, storageId = 'de
               title="새 채팅"
             >
               <Plus size={18} />
+            </button>
+          )}
+          {view === 'browser' && (
+            <button 
+              onClick={() => setView('chat')}
+              className="p-1.5 text-zinc-400 hover:text-green-400 rounded-md hover:bg-zinc-800 transition-colors"
+              title="채팅으로 돌아가기"
+            >
+              <MessageSquare size={18} />
             </button>
           )}
           <button onClick={onClose} className="text-zinc-500 hover:text-zinc-300 ml-2">
@@ -331,6 +383,109 @@ const Assistant: React.FC<Props> = ({ isOpen, onClose, settings, storageId = 'de
       {/* Main Content */}
       <div className="flex-1 overflow-hidden relative flex flex-col">
         
+        {/* VIEW: Browser */}
+        {view === 'browser' && (
+          <div className="flex flex-col h-full bg-zinc-100">
+             {/* URL Bar */}
+             <div className="flex items-center gap-2 p-2 bg-zinc-900 border-b border-zinc-800">
+                <form onSubmit={handleUrlSubmit} className="flex-1 flex gap-2">
+                   <div className="relative flex-1">
+                      <input 
+                        type="text" 
+                        value={urlInput}
+                        onChange={(e) => setUrlInput(e.target.value)}
+                        className="w-full bg-zinc-800 border border-zinc-700 text-zinc-200 text-xs rounded px-3 py-1.5 focus:outline-none focus:border-blue-500"
+                        placeholder="https://..."
+                      />
+                   </div>
+                   <button type="submit" className="p-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded border border-zinc-700">
+                      <ArrowRight size={14} />
+                   </button>
+                </form>
+                <button 
+                   onClick={() => setBrowserUrl(prev => prev)} // Force refresh logic would be complex with React state, simplify to reload iframe
+                   onClickCapture={() => { if(iframeRef.current) iframeRef.current.src = iframeRef.current.src; }}
+                   className="p-1.5 text-zinc-400 hover:text-zinc-100"
+                   title="새로고침"
+                >
+                   <RotateCcw size={14} />
+                </button>
+                <a 
+                   href={browserUrl} 
+                   target="_blank" 
+                   rel="noopener noreferrer"
+                   className="p-1.5 text-zinc-400 hover:text-zinc-100"
+                   title="새 창으로 열기 (오류 시 사용)"
+                >
+                   <ExternalLink size={14} />
+                </a>
+             </div>
+             
+             {/* Presets */}
+             <div className="flex gap-2 p-2 bg-zinc-900 border-b border-zinc-800 overflow-x-auto scrollbar-thin scrollbar-thumb-zinc-700">
+                <button onClick={() => navigateBrowser('https://namu.wiki/w/%EB%8C%80%EB%AC%B8')} className="px-2 py-1 text-[10px] bg-zinc-800 text-zinc-300 rounded hover:bg-zinc-700 border border-zinc-700 whitespace-nowrap">나무위키</button>
+                <button onClick={() => navigateBrowser('https://ko.dict.naver.com/')} className="px-2 py-1 text-[10px] bg-zinc-800 text-zinc-300 rounded hover:bg-zinc-700 border border-zinc-700 whitespace-nowrap">네이버사전</button>
+                <button onClick={() => navigateBrowser('http://speller.cs.pusan.ac.kr/')} className="px-2 py-1 text-[10px] bg-zinc-800 text-zinc-300 rounded hover:bg-zinc-700 border border-zinc-700 whitespace-nowrap">맞춤법검사기</button>
+                <button onClick={() => navigateBrowser('https://www.google.com/search?q=synonym')} className="px-2 py-1 text-[10px] bg-zinc-800 text-zinc-300 rounded hover:bg-zinc-700 border border-zinc-700 whitespace-nowrap">구글검색</button>
+             </div>
+
+             {/* Iframe */}
+             <div className="flex-1 relative bg-white">
+                <iframe 
+                   ref={iframeRef}
+                   src={browserUrl}
+                   className="w-full h-full border-none"
+                   title="Embedded Browser"
+                   sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
+                />
+                <div className="absolute bottom-0 left-0 right-0 bg-yellow-100 text-yellow-800 text-[10px] px-2 py-1 opacity-75 hover:opacity-100 text-center pointer-events-none">
+                   ⚠️ Google, Naver 등 일부 사이트는 보안상의 이유로 여기서 열리지 않을 수 있습니다. (흰 화면) 그럴 땐 우측 상단 '새 창으로 열기'를 이용하세요.
+                </div>
+             </div>
+          </div>
+        )}
+        
+        {/* VIEW: External Link (Gemini) */}
+        {view === 'external' && (
+          <div className="flex flex-col items-center justify-center h-full p-6 text-center text-zinc-400 space-y-6">
+            <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-purple-500 rounded-2xl flex items-center justify-center shadow-lg shadow-purple-900/20">
+              <Sparkles size={32} className="text-white" />
+            </div>
+            
+            <div>
+              <h3 className="text-lg font-bold text-zinc-200 mb-2">Google Gemini (Gems) 연결</h3>
+              <p className="text-sm text-zinc-500 leading-relaxed">
+                Google의 보안 정책(X-Frame-Options)으로 인해<br/>
+                웹사이트를 이 패널 안에 직접 표시할 수 없습니다.
+              </p>
+            </div>
+
+            <a 
+              href="https://gemini.google.com/app" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 px-6 py-3 bg-zinc-100 hover:bg-white text-zinc-900 font-bold rounded-full transition-all shadow-md active:scale-95"
+            >
+              Gemini 공식 사이트 열기 <ExternalLink size={16} />
+            </a>
+
+            <div className="bg-zinc-800/50 p-4 rounded-lg text-left w-full border border-zinc-700/50">
+              <h4 className="text-xs font-bold text-blue-400 mb-2 flex items-center gap-1">
+                💡 팁: Gem을 이 앱에서 사용하는 방법
+              </h4>
+              <ol className="text-xs text-zinc-400 space-y-2 list-decimal list-inside leading-relaxed">
+                <li>위 버튼을 눌러 Gemini 사이트에서 내가 만든 Gem의 <strong>[설정/편집]</strong>을 엽니다.</li>
+                <li><strong>'지침(Instructions)'</strong> 내용을 복사합니다.</li>
+                <li>이 앱의 <strong>[설정] &gt; [AI 어시스턴트] &gt; [페르소나] &gt; [역할 및 지침]</strong>에 붙여넣습니다.</li>
+              </ol>
+            </div>
+            
+            <button onClick={() => setView('chat')} className="text-xs text-zinc-500 hover:text-zinc-300 underline mt-4">
+              채팅으로 돌아가기
+            </button>
+          </div>
+        )}
+
         {/* VIEW: Chat List */}
         {view === 'list' && (
           <div className="flex-1 overflow-y-auto p-2 space-y-2">

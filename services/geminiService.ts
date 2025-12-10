@@ -85,13 +85,20 @@ const handleGeminiError = (error: any, modelName: string) => {
         const isPro = modelName.includes('pro');
         const modelLabel = isPro ? 'Pro' : 'Flash';
         
+        // Explain the strict limits for Pro models on Free tier
+        const limitExplanation = isPro 
+          ? `[원인] **Pro 모델**의 무료 하루 한도는 **약 50회**로 매우 적습니다. 이미 다 쓰셨을 수 있습니다.` 
+          : `[원인] **Flash 모델**의 무료 하루 한도는 **약 1500회**입니다. 일시적인 과부하일 수 있습니다.`;
+
         throw new Error(
             `[사용량 한도 초과 (429)]\n` +
             `선택하신 '${modelLabel}' 모델의 무료 사용량이 소진되었습니다.\n\n` +
+            `${limitExplanation}\n\n` +
             `[언제 다시 쓸 수 있나요?]\n` +
-            `1. **분당 제한(RPM)**: 너무 빨리 요청했습니다. **1~2분 뒤**에 다시 시도하세요.\n` +
-            `2. **일일 제한(RPD)**: 하루 할당량을 모두 썼습니다. **한국 시간 오후 4시~5시(미국 서부 자정)**에 리셋됩니다.\n\n` +
-            `팁: 급하시다면 설정에서 'Gemini 2.5 Flash'로 변경해보세요.`
+            `1. **분당 제한(RPM)**: 잠시(1~2분) 기다리면 풀립니다.\n` +
+            `2. **일일 제한(RPD)**: 보통 한국 시간 **오후 5시(서머타임 4시)**에 리셋되지만, **'최근 24시간 기준(Rolling)'**으로 계산될 수도 있습니다.\n` +
+            `   (즉, 어제 이 시간에 많이 썼다면 그만큼 시간이 더 지나야 풀립니다.)\n\n` +
+            `💡 **강력 추천 해결책**: 제한이 거의 없는 **'Gemini 2.5 Flash'**로 설정을 변경하세요. (성능 차이가 크지 않으며 30배 더 많이 쓸 수 있습니다)`
         );
     }
 
