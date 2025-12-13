@@ -186,6 +186,7 @@ const Assistant: React.FC<Props> = ({ isOpen, onClose, settings, storageId = 'de
       attachments: currentAttachments.length > 0 ? currentAttachments : undefined
     };
 
+    // Update UI immediately
     const updatedMessages = [...session.messages, newMessage];
     
     // Generate Title if it's the first user message
@@ -203,8 +204,11 @@ const Assistant: React.FC<Props> = ({ isOpen, onClose, settings, storageId = 'de
 
     try {
       // Pass myModel and myPersona to service
+      // CRITICAL FIX: Pass 'session.messages' (history) instead of 'updatedMessages'.
+      // The service appends the 'newMessage' (userText) manually to the payload.
+      // Passing 'updatedMessages' caused the user message to be sent TWICE (User -> User sequence error).
       const response = await chatWithAssistant(
-        updatedMessages, 
+        session.messages, 
         userText,
         myModel, 
         settings.apiKey,
@@ -220,12 +224,12 @@ const Assistant: React.FC<Props> = ({ isOpen, onClose, settings, storageId = 'de
       };
       
       updateSessionMessages(activeSessionId, [...updatedMessages, botMessage]);
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
       const errorMessage: ChatMessage = {
         id: uuidv4(),
         role: 'model',
-        text: "죄송합니다. 오류가 발생했습니다. API 키나 인터넷 연결을 확인해주세요."
+        text: error.message || "죄송합니다. 오류가 발생했습니다. API 키나 인터넷 연결을 확인해주세요."
       };
       updateSessionMessages(activeSessionId, [...updatedMessages, errorMessage]);
     } finally {

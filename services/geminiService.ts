@@ -265,7 +265,16 @@ export const chatWithAssistant = async (
 
   // Prepare Contents
   const contents = history
-      .filter(msg => !msg.isLoading && (msg.text || (msg.attachments && msg.attachments.length > 0)))
+      .filter(msg => {
+          // Filter out loading states or empty messages
+          if (msg.isLoading || (!msg.text && (!msg.attachments || msg.attachments.length === 0))) return false;
+          
+          // IMPORTANT: Filter out the initial "Welcome" message from the model (created locally).
+          // Gemini API treats a conversation starting with "Model" as invalid or ambiguous in some contexts (it expects User -> Model -> User).
+          if (msg.role === 'model' && msg.id === 'welcome') return false;
+          
+          return true;
+      })
       .map(msg => {
         const parts: Part[] = [];
         if (msg.attachments) {
@@ -285,6 +294,8 @@ export const chatWithAssistant = async (
         return { role: msg.role, parts: parts };
       });
     
+  // Append the current new message
+  // Note: The caller (Assistant.tsx) must pass the history *excluding* this new message to avoid duplication.
   const newParts: Part[] = [];
   if (attachments && attachments.length > 0) {
       attachments.forEach(att => {
