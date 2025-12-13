@@ -110,7 +110,7 @@ export const getDefaultSettings = (): AppSettings => ({
   snippets: DEFAULT_SNIPPETS,
   aiModel: 'gemini-2.5-flash', // Updated default
   
-  // Default Assistant Models
+  // Default Assistant Models - Ensure they match available models
   leftAssistantModel: 'gemini-2.5-flash',
   rightAssistantModel: 'gemini-2.5-flash',
 
@@ -288,18 +288,20 @@ export const getLocalSettings = (): AppSettings | null => {
   }
 
   // Model Migration Logic
-  // Updated: Allow new Pro models (2.0 Pro, 2.5 Pro) to persist
+  // Updated: Allow new Pro models (2.0 Pro, 2.5 Pro, 3.0 Pro) to persist
+  // CRITICAL: Strictly validate against AVAILABLE_MODELS
   const migrateModel = (modelName: string) => {
     if (!modelName) return defaults.aiModel;
     
-    // Check if the model ID exists in AVAILABLE_MODELS
+    // Check if the model ID exists in current AVAILABLE_MODELS list
     const isValid = AVAILABLE_MODELS.some(m => m.id === modelName);
     
     if (isValid) {
       return modelName;
     }
     
-    // Fallback if invalid
+    console.warn(`Migrating invalid/old model '${modelName}' to default 'gemini-2.5-flash'`);
+    // Fallback if invalid (e.g., deprecated model)
     return 'gemini-2.5-flash';
   };
 
@@ -309,8 +311,11 @@ export const getLocalSettings = (): AppSettings | null => {
   if (!parsed.leftAssistantModel) parsed.leftAssistantModel = defaults.leftAssistantModel;
   
   if (!parsed.rightAssistantModel) {
+     // Legacy migration: If right model missing, try to migrate from old 'assistantModel'
+     // BUT we must validate it.
      parsed.rightAssistantModel = parsed.assistantModel ? migrateModel(parsed.assistantModel) : defaults.rightAssistantModel;
   } else {
+     // Normal migration: Validate existing right model
      parsed.rightAssistantModel = migrateModel(parsed.rightAssistantModel);
   }
   

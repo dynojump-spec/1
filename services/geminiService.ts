@@ -87,18 +87,17 @@ const handleGeminiError = (error: any, modelName: string) => {
         
         // Explain the strict limits for Pro models on Free tier
         const limitExplanation = isPro 
-          ? `[원인] **Pro 모델**의 무료 하루 한도는 **약 50회**로 매우 적습니다. 이미 다 쓰셨을 수 있습니다.` 
-          : `[원인] **Flash 모델**의 무료 하루 한도는 **약 1500회**입니다. 일시적인 과부하일 수 있습니다.`;
+          ? `[원인] **'${modelName}'** 모델의 무료 하루 한도는 **약 50회**로 매우 적습니다. 혹은 대화가 너무 길어 **분당 토큰 한도(TPM)**를 초과했을 수 있습니다.` 
+          : `[원인] **'${modelName}'** 모델의 사용량이 많아 일시적인 과부하가 걸렸습니다.`;
 
         throw new Error(
             `[사용량 한도 초과 (429)]\n` +
-            `선택하신 '${modelLabel}' 모델의 무료 사용량이 소진되었습니다.\n\n` +
+            `선택하신 '${modelName}' 모델의 사용량이 소진되었습니다.\n\n` +
             `${limitExplanation}\n\n` +
-            `[언제 다시 쓸 수 있나요?]\n` +
-            `1. **분당 제한(RPM)**: 잠시(1~2분) 기다리면 풀립니다.\n` +
-            `2. **일일 제한(RPD)**: 보통 한국 시간 **오후 5시(서머타임 4시)**에 리셋되지만, **'최근 24시간 기준(Rolling)'**으로 계산될 수도 있습니다.\n` +
-            `   (즉, 어제 이 시간에 많이 썼다면 그만큼 시간이 더 지나야 풀립니다.)\n\n` +
-            `💡 **강력 추천 해결책**: 제한이 거의 없는 **'Gemini 2.5 Flash'**로 설정을 변경하세요. (성능 차이가 크지 않으며 30배 더 많이 쓸 수 있습니다)`
+            `[해결 방법]\n` +
+            `1. **새로운 대화 시작**: 대화 내용이 길어지면 토큰 소모량이 급증합니다. '+' 버튼을 눌러 새 대화를 시작해보세요.\n` +
+            `2. **Flash 모델 사용**: 제한이 거의 없는 **'Gemini 2.5 Flash'**로 설정을 변경하세요.\n` +
+            `3. **잠시 대기**: 1~2분 후 다시 시도해보세요.`
         );
     }
 
@@ -126,10 +125,9 @@ const handleGeminiError = (error: any, modelName: string) => {
     if (status === 404 || msg.includes('Not Found') || msg.includes('models/')) {
         throw new Error(
             `[모델 찾을 수 없음 (404)]\n` +
-            `선택하신 '${modelName}' 모델을 현재 API 키로 사용할 수 없거나, 구글에서 더 이상 지원하지 않습니다.\n\n` +
-            `해결 방법:\n` +
-            `1. 설정에서 **'Gemini 2.0 Pro'** 또는 **'Flash'** 모델로 변경해주세요.\n` +
-            `2. (Preview 모델의 경우) 구글 정책에 따라 특정 계정에서만 접근 가능할 수 있습니다.`
+            `선택하신 '${modelName}' 모델을 사용할 수 없습니다.\n` +
+            `설정된 모델 ID가 구형이거나 잘못되었습니다.\n\n` +
+            `해결 방법: 설정 메뉴에서 **'Gemini 2.5 Flash'** 등 최신 모델로 다시 선택해주세요.`
         );
     }
 
@@ -263,14 +261,20 @@ export const chatWithAssistant = async (
   const key = (apiKey || process.env.API_KEY || '').trim();
   if (!key) throw new Error("API Key is missing. Please check your settings.");
 
-  // Prepare Contents
-  const contents = history
+  // Prepare Contents: Optimize Context Length
+  // Keep only the last 30 messages to avoid hitting Token Limits (TPM) on Pro models
+  const RECENT_HISTORY_LIMIT = 30;
+  
+  const optimizedHistory = history.length > RECENT_HISTORY_LIMIT 
+      ? history.slice(history.length - RECENT_HISTORY_LIMIT) 
+      : history;
+
+  const contents = optimizedHistory
       .filter(msg => {
           // Filter out loading states or empty messages
           if (msg.isLoading || (!msg.text && (!msg.attachments || msg.attachments.length === 0))) return false;
           
           // IMPORTANT: Filter out the initial "Welcome" message from the model (created locally).
-          // Gemini API treats a conversation starting with "Model" as invalid or ambiguous in some contexts (it expects User -> Model -> User).
           if (msg.role === 'model' && msg.id === 'welcome') return false;
           
           return true;
@@ -295,7 +299,6 @@ export const chatWithAssistant = async (
       });
     
   // Append the current new message
-  // Note: The caller (Assistant.tsx) must pass the history *excluding* this new message to avoid duplication.
   const newParts: Part[] = [];
   if (attachments && attachments.length > 0) {
       attachments.forEach(att => {
