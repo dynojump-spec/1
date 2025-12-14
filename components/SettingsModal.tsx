@@ -216,34 +216,60 @@ const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUpdate })
     }
   };
 
-  const handleKnowledgeFileAdd = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const handleKnowledgeFileAdd = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
 
-    // Check size warning (200KB limit for warning)
-    if (file.size > 200 * 1024) {
-        alert("주의: 파일 용량이 큽니다 (200KB 이상).\n\nAI 전송 시 내용이 자동으로 잘려서 전송됩니다.\n전체 내용을 학습시키려면 여러 파일로 나누거나 요약본을 사용하세요.");
+    const newFiles: KnowledgeFile[] = [];
+    let largeFileWarningShown = false;
+
+    // Helper to read file
+    const readFile = (file: File): Promise<KnowledgeFile> => {
+        return new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const content = event.target?.result as string;
+                if (content) {
+                    resolve({
+                        id: uuidv4(),
+                        name: file.name,
+                        content: content,
+                        size: file.size
+                    });
+                } else {
+                    resolve({ id: uuidv4(), name: file.name, content: '', size: 0 });
+                }
+            };
+            reader.onerror = () => {
+                console.error(`Failed to read file ${file.name}`);
+                resolve({ id: uuidv4(), name: file.name, content: '', size: 0 });
+            };
+            reader.readAsText(file);
+        });
+    };
+
+    // Check sizes first
+    for (let i = 0; i < files.length; i++) {
+        if (files[i].size > 500 * 1024) {
+             largeFileWarningShown = true;
+        }
     }
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const content = event.target?.result as string;
-      if (content) {
-        const newFile: KnowledgeFile = {
-            id: uuidv4(),
-            name: file.name,
-            content: content,
-            size: file.size
-        };
+    if (largeFileWarningShown) {
+        alert("주의: 일부 파일 용량이 큽니다.\n\n파일이 너무 크면 AI 응답이 실패하거나 사용량 한도(Quota)를 초과할 수 있습니다.");
+    }
 
+    // Read all files
+    const promises = Array.from(files).map(file => readFile(file as File));
+    const results = await Promise.all(promises);
+    
+    // Filter out valid results
+    const validFiles = results.filter(f => f.content && f.size > 0);
+
+    if (validFiles.length > 0) {
         const currentFiles = getAssistantConfig().persona?.files || [];
-        updateAssistantConfig('files', [...currentFiles, newFile]);
-      }
-    };
-    reader.onerror = () => {
-      alert("파일을 읽는데 실패했습니다.");
-    };
-    reader.readAsText(file);
+        updateAssistantConfig('files', [...currentFiles, ...validFiles]);
+    }
     
     // Reset input
     if (knowledgeFileInputRef.current) knowledgeFileInputRef.current.value = '';
@@ -808,6 +834,7 @@ const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUpdate })
                         onChange={handleKnowledgeFileAdd}
                         className="hidden" 
                         accept=".txt,.md,.csv,.json,.jsonl" 
+                        multiple 
                       />
                     </div>
                     

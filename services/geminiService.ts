@@ -94,7 +94,7 @@ const handleGeminiError = (error: any, modelName: string) => {
             `선택하신 '${modelName}' 모델의 사용량이 소진되었습니다.\n\n` +
             `${limitExplanation}\n\n` +
             `[해결 방법]\n` +
-            `1. **대용량 파일 확인**: 어시스턴트 설정의 '참조 파일'이 너무 크지 않은지 확인하세요. (자동으로 일부가 제외되었지만 여전히 클 수 있습니다.)\n` +
+            `1. **대용량 파일 확인**: 어시스턴트 설정의 '참조 파일' 용량을 확인하세요. 파일이 크면 무료 버전에서는 작동하지 않을 수 있습니다.\n` +
             `2. **새로운 대화 시작**: 대화 내용이 길어지면 토큰 소모량이 급증합니다.\n` +
             `3. **잠시 대기**: 1~2분 후 다시 시도해보세요.`
         );
@@ -322,38 +322,11 @@ export const chatWithAssistant = async (
           personaInstruction += `\n\n[KNOWLEDGE BASE / REFERENCE]\n${persona.knowledge}`;
       }
       
-      // IMPORTANT FIX: Limit file content size to prevent 429 Quota Exceeded errors.
-      // 2MB file is ~2M characters. We must truncate it drastically for standard API calls.
-      // Safety Limit: ~50,000 characters total across all files (approx 15k-20k tokens)
-      const MAX_TOTAL_KNOWLEDGE_LENGTH = 50000;
-      let currentKnowledgeLength = 0;
-
+      // Removed truncation as requested. Full content is sent.
       if (persona.files && persona.files.length > 0) {
          personaInstruction += `\n\n[ATTACHED KNOWLEDGE FILES]`;
          persona.files.forEach(file => {
-           // If we already hit the limit, stop adding or add very brief notice
-           if (currentKnowledgeLength >= MAX_TOTAL_KNOWLEDGE_LENGTH) {
-               personaInstruction += `\n(File '${file.name}' omitted due to size limit)\n`;
-               return;
-           }
-
-           const remainingQuota = MAX_TOTAL_KNOWLEDGE_LENGTH - currentKnowledgeLength;
-           // If file is larger than remaining quota, truncate it
-           let contentToAdd = file.content;
-           let isTruncated = false;
-
-           if (contentToAdd.length > remainingQuota) {
-               contentToAdd = contentToAdd.substring(0, remainingQuota);
-               isTruncated = true;
-           }
-
-           personaInstruction += `\n--- START OF FILE: ${file.name} ---\n${contentToAdd}\n`;
-           if (isTruncated) {
-               personaInstruction += `\n... (Content truncated due to API size limits) ...\n`;
-           }
-           personaInstruction += `--- END OF FILE: ${file.name} ---\n`;
-           
-           currentKnowledgeLength += contentToAdd.length;
+           personaInstruction += `\n--- START OF FILE: ${file.name} ---\n${file.content}\n--- END OF FILE: ${file.name} ---\n`;
          });
       }
       if (personaInstruction) {

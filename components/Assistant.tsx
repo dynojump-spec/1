@@ -248,8 +248,10 @@ const Assistant: React.FC<Props> = ({ isOpen, onClose, settings, storageId = 'de
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
-      const file = e.target.files[0];
-      processFile(file);
+      // Process all selected files
+      Array.from(e.target.files).forEach(file => {
+        processFile(file as File);
+      });
     }
     // Reset input
     if (fileInputRef.current) fileInputRef.current.value = '';
@@ -665,6 +667,7 @@ const Assistant: React.FC<Props> = ({ isOpen, onClose, settings, storageId = 'de
                    ref={fileInputRef}
                    onChange={handleFileSelect}
                    className="hidden" 
+                   multiple 
                  />
 
                 <textarea
