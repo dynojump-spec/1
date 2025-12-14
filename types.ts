@@ -69,13 +69,11 @@ export interface AppSettings {
 }
 
 // Define available models for the UI
-// Updated: Included Gemini 3.0 Pro Preview
+// Updated based on user request: Gemini 2.5 Flash, 2.5 Pro, 3.0 Pro
 export const AVAILABLE_MODELS = [
-  { id: 'gemini-3-pro-preview', name: 'Gemini 3.0 Pro Preview (최신/고성능)' },
-  { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash (권장/균형)' },
-  { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro (안정적/추론)' },
-  { id: 'gemini-2.5-flash-lite-preview-02-05', name: 'Gemini 2.5 Flash Lite (가성비/초고속)' },
-  { id: 'gemini-2.0-flash-thinking-exp-01-21', name: 'Gemini 2.0 Flash Thinking (논리적 사고)' },
+  { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash (권장/빠름)' },
+  { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro (고성능/추론)' },
+  { id: 'gemini-3-pro-preview', name: 'Gemini 3.0 Pro Preview (최신/최고성능)' },
 ];
 
 export enum AIRevisionMode {
