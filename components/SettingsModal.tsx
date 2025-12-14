@@ -281,6 +281,14 @@ const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUpdate })
       updateAssistantConfig('files', currentFiles.filter(f => f.id !== id));
   };
 
+  const removeAllKnowledgeFiles = () => {
+      const currentFiles = getAssistantConfig().persona?.files || [];
+      if (currentFiles.length === 0) return;
+      if (window.confirm("모든 참조 파일을 목록에서 제거하시겠습니까?")) {
+          updateAssistantConfig('files', []);
+      }
+  };
+
   // --- Backup & Restore Logic ---
   const handleFullBackup = () => {
     try {
@@ -821,13 +829,25 @@ const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUpdate })
                         <span>참조 파일 목록 (Attached Knowledge Files)</span>
                         <BookOpen size={12} />
                       </label>
-                      <button 
-                        onClick={() => knowledgeFileInputRef.current?.click()}
-                        className="text-[10px] flex items-center gap-1 px-2 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded border border-zinc-700 transition-colors"
-                      >
-                        <FileUp size={10} />
-                        파일 추가하기
-                      </button>
+                      <div className="flex items-center gap-2">
+                        {(getAssistantConfig().persona?.files || []).length > 0 && (
+                            <button 
+                              onClick={removeAllKnowledgeFiles}
+                              className="text-[10px] flex items-center gap-1 px-2 py-1 bg-zinc-800 hover:bg-red-900/20 text-zinc-400 hover:text-red-300 rounded border border-zinc-700 hover:border-red-900/50 transition-colors"
+                              title="목록 비우기"
+                            >
+                              <Trash2 size={10} />
+                              초기화
+                            </button>
+                        )}
+                        <button 
+                          onClick={() => knowledgeFileInputRef.current?.click()}
+                          className="text-[10px] flex items-center gap-1 px-2 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded border border-zinc-700 transition-colors"
+                        >
+                          <FileUp size={10} />
+                          파일 추가하기
+                        </button>
+                      </div>
                       <input 
                         type="file" 
                         ref={knowledgeFileInputRef}
