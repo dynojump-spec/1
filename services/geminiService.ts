@@ -261,41 +261,53 @@ export const chatWithAssistant = async (
   if (!key) throw new Error("API Key is missing. Please check your settings.");
 
   // Prepare Contents: Optimize Context Length
-  // Keep only the last 30 messages to avoid hitting Token Limits (TPM) on Pro models
-  const RECENT_HISTORY_LIMIT = 30;
+  // Instead of a fixed count, we use a Character Budget to avoid TPM (Tokens Per Minute) 429 errors.
+  // 1 Token ~= 4 Characters (English), but in Korean/Complex scripts, it varies. 
+  // We'll aim for approx 20,000 chars (approx 5k-10k tokens) of history context to be safe.
+  const MAX_HISTORY_CHARS = 20000; 
   
-  const optimizedHistory = history.length > RECENT_HISTORY_LIMIT 
-      ? history.slice(history.length - RECENT_HISTORY_LIMIT) 
-      : history;
+  let currentChars = 0;
+  // Reverse history to process newest first
+  const reversedHistory = [...history].reverse();
+  const selectedMessages: ChatMessage[] = [];
 
-  const contents = optimizedHistory
-      .filter(msg => {
-          // Filter out loading states or empty messages
-          if (msg.isLoading || (!msg.text && (!msg.attachments || msg.attachments.length === 0))) return false;
-          
-          // IMPORTANT: Filter out the initial "Welcome" message from the model (created locally).
-          if (msg.role === 'model' && msg.id === 'welcome') return false;
-          
-          return true;
-      })
-      .map(msg => {
-        const parts: Part[] = [];
-        if (msg.attachments) {
-          msg.attachments.forEach(att => {
-            if (att.type === 'image') {
-              parts.push({
-                inlineData: { mimeType: att.mimeType, data: att.data }
-              });
-            } else {
-              parts.push({
-                text: `[File Attachment: ${att.name}]\n${att.data}\n`
-              });
-            }
+  for (const msg of reversedHistory) {
+      // Filter out loading states or empty messages
+      if (msg.isLoading || (!msg.text && (!msg.attachments || msg.attachments.length === 0))) continue;
+      
+      // IMPORTANT: Filter out the initial "Welcome" message from the model (created locally).
+      if (msg.role === 'model' && msg.id === 'welcome') continue;
+      
+      const msgLen = (msg.text?.length || 0) + 200; // Text length + rough overhead for attachment markers
+      
+      // Stop adding if we exceed the budget
+      if (currentChars + msgLen > MAX_HISTORY_CHARS) break;
+      
+      selectedMessages.push(msg);
+      currentChars += msgLen;
+  }
+
+  // Restore chronological order
+  const optimizedHistory = selectedMessages.reverse();
+
+  const contents = optimizedHistory.map(msg => {
+    const parts: Part[] = [];
+    if (msg.attachments) {
+      msg.attachments.forEach(att => {
+        if (att.type === 'image') {
+          parts.push({
+            inlineData: { mimeType: att.mimeType, data: att.data }
+          });
+        } else {
+          parts.push({
+            text: `[File Attachment: ${att.name}]\n${att.data}\n`
           });
         }
-        if (msg.text) parts.push({ text: msg.text });
-        return { role: msg.role, parts: parts };
       });
+    }
+    if (msg.text) parts.push({ text: msg.text });
+    return { role: msg.role, parts: parts };
+  });
     
   // Append the current new message
   const newParts: Part[] = [];
@@ -322,11 +334,13 @@ export const chatWithAssistant = async (
           personaInstruction += `\n\n[KNOWLEDGE BASE / REFERENCE]\n${persona.knowledge}`;
       }
       
-      // Removed truncation as requested. Full content is sent.
+      // Included Files in System Instruction
       if (persona.files && persona.files.length > 0) {
          personaInstruction += `\n\n[ATTACHED KNOWLEDGE FILES]`;
          persona.files.forEach(file => {
-           personaInstruction += `\n--- START OF FILE: ${file.name} ---\n${file.content}\n--- END OF FILE: ${file.name} ---\n`;
+           // Basic check to prevent massive files from eating entire context
+           const content = file.content.length > 30000 ? file.content.substring(0, 30000) + "\n...(Truncated due to length)..." : file.content;
+           personaInstruction += `\n--- START OF FILE: ${file.name} ---\n${content}\n--- END OF FILE: ${file.name} ---\n`;
          });
       }
       if (personaInstruction) {
