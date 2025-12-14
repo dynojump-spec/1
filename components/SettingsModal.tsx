@@ -1,7 +1,6 @@
 
-
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Plus, Trash2, Keyboard, Command, Type, Palette, Cpu, Download, Upload, AlignJustify, AlignLeft, Wand2, Key, Eye, EyeOff, MessageSquare, Volume2, Indent, Bot, PanelLeft, PanelRight, BookOpen, UserCircle, PenTool, FileUp, FileText, RotateCcw, ExternalLink, Database, Save, FolderUp, Folder, PaintBucket } from 'lucide-react';
+import { X, Plus, Trash2, Keyboard, Command, Type, Palette, Cpu, Download, Upload, AlignJustify, AlignLeft, Wand2, Key, Eye, EyeOff, MessageSquare, Volume2, Indent, Bot, PanelLeft, PanelRight, BookOpen, UserCircle, PenTool, FileUp, FileText, RotateCcw, ExternalLink, Database, Save, FolderUp, Folder, PaintBucket, AlertTriangle } from 'lucide-react';
 import { AppSettings, FontType, Snippet, SnippetType, AVAILABLE_MODELS, AIRevisionMode, KnowledgeFile } from '../types';
 import { getDefaultSettings } from '../services/storageService';
 import { v4 as uuidv4 } from 'uuid';
@@ -220,6 +219,11 @@ const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUpdate })
   const handleKnowledgeFileAdd = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    // Check size warning (200KB limit for warning)
+    if (file.size > 200 * 1024) {
+        alert("주의: 파일 용량이 큽니다 (200KB 이상).\n\nAI 전송 시 내용이 자동으로 잘려서 전송됩니다.\n전체 내용을 학습시키려면 여러 파일로 나누거나 요약본을 사용하세요.");
+    }
 
     const reader = new FileReader();
     reader.onload = (event) => {
@@ -815,7 +819,10 @@ const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUpdate })
                                   <FileText size={12} />
                                </div>
                                <div className="flex flex-col min-w-0">
-                                  <span className="text-xs text-zinc-300 truncate font-medium">{file.name}</span>
+                                  <div className="flex items-center gap-2">
+                                     <span className="text-xs text-zinc-300 truncate font-medium">{file.name}</span>
+                                     {(file.size > 50000) && <AlertTriangle size={10} className="text-yellow-500" title="용량이 큼 (자동 요약됨)" />}
+                                  </div>
                                   <span className="text-[10px] text-zinc-500">{(file.size / 1024).toFixed(1)} KB</span>
                                </div>
                             </div>

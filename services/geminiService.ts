@@ -83,20 +83,19 @@ const handleGeminiError = (error: any, modelName: string) => {
     // 1. Quota / Rate Limits (429)
     if (isQuotaError(error)) {
         const isPro = modelName.includes('pro');
-        const modelLabel = isPro ? 'Pro' : 'Flash';
         
         // Explain the strict limits for Pro models on Free tier
         const limitExplanation = isPro 
           ? `[원인] **'${modelName}'** 모델의 무료 하루 한도는 **약 50회**로 매우 적습니다. 혹은 대화가 너무 길어 **분당 토큰 한도(TPM)**를 초과했을 수 있습니다.` 
-          : `[원인] **'${modelName}'** 모델의 사용량이 많아 일시적인 과부하가 걸렸습니다.`;
+          : `[원인] **'${modelName}'** 모델의 사용량이 많거나, **설정에 첨부된 파일 용량**이 너무 커서 일시적인 한도 초과가 발생했습니다.`;
 
         throw new Error(
             `[사용량 한도 초과 (429)]\n` +
             `선택하신 '${modelName}' 모델의 사용량이 소진되었습니다.\n\n` +
             `${limitExplanation}\n\n` +
             `[해결 방법]\n` +
-            `1. **새로운 대화 시작**: 대화 내용이 길어지면 토큰 소모량이 급증합니다. '+' 버튼을 눌러 새 대화를 시작해보세요.\n` +
-            `2. **Flash 모델 사용**: 제한이 거의 없는 **'Gemini 2.5 Flash'**로 설정을 변경하세요.\n` +
+            `1. **대용량 파일 확인**: 어시스턴트 설정의 '참조 파일'이 너무 크지 않은지 확인하세요. (자동으로 일부가 제외되었지만 여전히 클 수 있습니다.)\n` +
+            `2. **새로운 대화 시작**: 대화 내용이 길어지면 토큰 소모량이 급증합니다.\n` +
             `3. **잠시 대기**: 1~2분 후 다시 시도해보세요.`
         );
     }
@@ -322,10 +321,39 @@ export const chatWithAssistant = async (
       if (persona.knowledge && persona.knowledge.trim()) {
           personaInstruction += `\n\n[KNOWLEDGE BASE / REFERENCE]\n${persona.knowledge}`;
       }
+      
+      // IMPORTANT FIX: Limit file content size to prevent 429 Quota Exceeded errors.
+      // 2MB file is ~2M characters. We must truncate it drastically for standard API calls.
+      // Safety Limit: ~50,000 characters total across all files (approx 15k-20k tokens)
+      const MAX_TOTAL_KNOWLEDGE_LENGTH = 50000;
+      let currentKnowledgeLength = 0;
+
       if (persona.files && persona.files.length > 0) {
          personaInstruction += `\n\n[ATTACHED KNOWLEDGE FILES]`;
          persona.files.forEach(file => {
-           personaInstruction += `\n--- START OF FILE: ${file.name} ---\n${file.content}\n--- END OF FILE: ${file.name} ---\n`;
+           // If we already hit the limit, stop adding or add very brief notice
+           if (currentKnowledgeLength >= MAX_TOTAL_KNOWLEDGE_LENGTH) {
+               personaInstruction += `\n(File '${file.name}' omitted due to size limit)\n`;
+               return;
+           }
+
+           const remainingQuota = MAX_TOTAL_KNOWLEDGE_LENGTH - currentKnowledgeLength;
+           // If file is larger than remaining quota, truncate it
+           let contentToAdd = file.content;
+           let isTruncated = false;
+
+           if (contentToAdd.length > remainingQuota) {
+               contentToAdd = contentToAdd.substring(0, remainingQuota);
+               isTruncated = true;
+           }
+
+           personaInstruction += `\n--- START OF FILE: ${file.name} ---\n${contentToAdd}\n`;
+           if (isTruncated) {
+               personaInstruction += `\n... (Content truncated due to API size limits) ...\n`;
+           }
+           personaInstruction += `--- END OF FILE: ${file.name} ---\n`;
+           
+           currentKnowledgeLength += contentToAdd.length;
          });
       }
       if (personaInstruction) {
