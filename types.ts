@@ -69,11 +69,12 @@ export interface AppSettings {
 }
 
 // Define available models for the UI
-// Updated based on user request: Gemini 2.5 Flash, 2.5 Pro, 3.0 Pro
+// Updated based on user request: Gemini 2.5 Flash, 2.5 Pro, 3.0 Pro, and the requested Native Audio Dialog
 export const AVAILABLE_MODELS = [
   { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash (권장/빠름)' },
   { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro (고성능/추론)' },
   { id: 'gemini-3-pro-preview', name: 'Gemini 3.0 Pro Preview (최신/최고성능)' },
+  { id: 'gemini-2.5-flash-native-audio-dialog', name: 'Gemini 2.5 Flash Native Audio Dialog' },
 ];
 
 export enum AIRevisionMode {
