@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, GenerateContentResponse, Part, HarmCategory, HarmBlockThreshold } from "@google/genai";
-import { AIRevisionMode, ChatMessage, SearchSource, AssistantPersona } from '../types';
+import { AIRevisionMode, ChatMessage, SearchSource, AssistantPersona, KnowledgeFile } from '../types';
 
 const SYSTEM_INSTRUCTION = `
 You are an expert Korean web novel editor (웹소설 PD/Editor).
@@ -246,6 +246,84 @@ interface ChatResponse {
   sources?: SearchSource[];
 }
 
+// --- SMART RETRIEVAL (RAG) HELPERS ---
+
+// Helper: Split text into manageable chunks
+const chunkText = (text: string, chunkSize: number = 1000, overlap: number = 200): string[] => {
+  const chunks: string[] = [];
+  let i = 0;
+  while (i < text.length) {
+    chunks.push(text.substring(i, Math.min(text.length, i + chunkSize)));
+    i += (chunkSize - overlap);
+  }
+  return chunks;
+};
+
+// Helper: Retrieve relevant chunks based on keyword matching
+const retrieveRelevantContext = (query: string, files: KnowledgeFile[]): string => {
+  if (!files || files.length === 0) return "";
+  
+  // Normalize query and extract keywords
+  const queryTerms = query.toLowerCase().split(/\s+/).filter(w => w.length > 1); // Ignore single chars
+  
+  // If query is empty or too short, return introduction of files
+  if (queryTerms.length === 0) {
+      let fallback = "";
+      for (const file of files) {
+          fallback += `\n--- Start of File: ${file.name} ---\n${file.content.substring(0, 1500)}...\n`;
+      }
+      return fallback;
+  }
+
+  const scoredChunks: { text: string; score: number; file: string }[] = [];
+
+  for (const file of files) {
+      // Chunk the file
+      const rawChunks = chunkText(file.content, 1500, 300);
+      
+      for (const chunk of rawChunks) {
+          let score = 0;
+          const lowerChunk = chunk.toLowerCase();
+          
+          for (const term of queryTerms) {
+              // Simple frequency count (escaped for regex)
+              const regex = new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
+              const count = (lowerChunk.match(regex) || []).length;
+              score += count;
+          }
+          
+          if (score > 0) {
+              scoredChunks.push({ text: chunk, score, file: file.name });
+          }
+      }
+  }
+
+  // Sort by score descending
+  scoredChunks.sort((a, b) => b.score - a.score);
+
+  // Take top N chunks until we hit a safe character limit
+  // Limit to ~20k chars to leave room for history and generation
+  const MAX_CONTEXT_CHARS = 20000; 
+  let currentChars = 0;
+  let result = "";
+
+  for (const item of scoredChunks) {
+      if (currentChars + item.text.length > MAX_CONTEXT_CHARS) break;
+      result += `\n--- Relevant Excerpt from ${item.file} (Matches: ${item.score}) ---\n${item.text}\n`;
+      currentChars += item.text.length;
+  }
+
+  // If no matches found, fallback to introduction
+  if (result === "") {
+      for (const file of files) {
+          result += `\n--- Start of File (No specific match found): ${file.name} ---\n${file.content.substring(0, 2000)}...\n`;
+      }
+  }
+
+  return result;
+};
+
+
 // General Chat Function for the Assistant Panel
 export const chatWithAssistant = async (
   history: ChatMessage[],
@@ -258,14 +336,12 @@ export const chatWithAssistant = async (
   const key = (apiKey || process.env.API_KEY || '').trim();
   if (!key) throw new Error("API Key is missing. Please check your settings.");
 
-  // Calculate total file size from persona
-  const totalFileChars = persona?.files?.reduce((acc, f) => acc + f.content.length, 0) || 0;
+  // DYNAMIC CONTEXT PRUNING (MAINTAINED)
+  // Even with RAG, we prune history to prevent overload.
+  const hasFiles = (persona?.files?.length || 0) > 0;
   
-  // Dynamic Budget: If files are huge, reduce history budget to near zero.
-  // Standard budget: 20k chars (~5k tokens)
-  // Large file budget: reserve almost everything for the file.
-  const isHeavyContext = totalFileChars > 50000;
-  const MAX_HISTORY_CHARS = isHeavyContext ? 1000 : 20000; 
+  // If we have files (RAG active), we keep history shorter to prioritize retrieved content.
+  const MAX_HISTORY_CHARS = hasFiles ? 5000 : 20000; 
   
   let currentChars = 0;
   const reversedHistory = [...history].reverse();
@@ -327,17 +403,15 @@ export const chatWithAssistant = async (
           personaInstruction += `\n\n[KNOWLEDGE BASE]\n${persona.knowledge}`;
       }
       
-      // FULL CONTENT INCLUSION STRATEGY
-      // Replaces RAG logic. We dump the whole file into System Instruction.
+      // SMART RETRIEVAL STRATEGY (RESTORED)
       if (persona.files && persona.files.length > 0) {
-         personaInstruction += `\n\n[ATTACHED REFERENCE MATERIALS (NOVEL/CONTEXT)]`;
+         personaInstruction += `\n\n[REFERENCE MATERIALS (RETRIEVED EXCERPTS)]`;
          
-         persona.files.forEach(file => {
-             // Simply include the full content. 
-             // Gemini 1.5 Flash has 1M context. 2-3MB text is roughly 1M tokens or less.
-             // Warning: This consumes massive quota per request.
-             personaInstruction += `\n--- START OF FILE: ${file.name} ---\n${file.content}\n--- END OF FILE ---\n`;
-         });
+         // Use Smart Retrieval instead of full dump
+         const retrievedContext = retrieveRelevantContext(newMessage, persona.files);
+         personaInstruction += retrievedContext;
+         
+         personaInstruction += `\n[NOTE] The above excerpts are retrieved from the attached files based on the user's query. If the answer is not in the excerpts, use your general knowledge but mention that it might not be in the file.`;
       }
       
       if (personaInstruction) {

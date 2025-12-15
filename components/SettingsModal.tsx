@@ -855,8 +855,8 @@ const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUpdate })
                                   <div className="flex items-center gap-2">
                                      <span className="text-xs text-zinc-300 truncate font-medium">{file.name}</span>
                                      {(file.size > 20000) && (
-                                       <span className="text-[10px] text-amber-500 flex items-center gap-0.5 bg-amber-900/20 px-1 rounded border border-amber-900/50" title="파일이 큽니다. AI가 내용을 모두 읽느라 답변이 느릴 수 있습니다. (전체 읽기 모드)">
-                                         <AlertTriangle size={8} /> 전체 읽기 (대기 시간 김)
+                                       <span className="text-[10px] text-blue-400 flex items-center gap-0.5 bg-blue-900/20 px-1 rounded border border-blue-900/50" title="파일이 큽니다. AI가 질문에 맞는 내용만 찾아 답변합니다. (스마트 발췌 모드)">
+                                         <CheckCircle2 size={8} /> 스마트 발췌 (토큰 절약)
                                        </span>
                                      )}
                                   </div>
