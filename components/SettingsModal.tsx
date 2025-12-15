@@ -220,9 +220,6 @@ const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUpdate })
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    const newFiles: KnowledgeFile[] = [];
-    let largeFileWarningShown = false;
-
     // Helper to read file
     const readFile = (file: File): Promise<KnowledgeFile> => {
         return new Promise((resolve) => {
@@ -247,17 +244,6 @@ const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUpdate })
             reader.readAsText(file);
         });
     };
-
-    // Warn only if extremely large (> 10MB)
-    for (let i = 0; i < files.length; i++) {
-        if (files[i].size > 10 * 1024 * 1024) {
-             largeFileWarningShown = true;
-        }
-    }
-
-    if (largeFileWarningShown) {
-        alert("주의: 10MB가 넘는 매우 큰 파일은 브라우저 성능을 저하시킬 수 있습니다.");
-    }
 
     // Read all files
     const promises = Array.from(files).map(file => readFile(file as File));
@@ -869,8 +855,8 @@ const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUpdate })
                                   <div className="flex items-center gap-2">
                                      <span className="text-xs text-zinc-300 truncate font-medium">{file.name}</span>
                                      {(file.size > 20000) && (
-                                       <span className="text-[10px] text-green-400 flex items-center gap-0.5 bg-green-900/20 px-1 rounded border border-green-900/50" title="파일이 커서 AI가 필요한 부분만 자동으로 검색하여 읽습니다 (스마트 발췌)">
-                                         <CheckCircle2 size={8} /> 스마트 검색 ON
+                                       <span className="text-[10px] text-amber-500 flex items-center gap-0.5 bg-amber-900/20 px-1 rounded border border-amber-900/50" title="파일이 큽니다. AI가 내용을 모두 읽느라 답변이 느릴 수 있습니다. (전체 읽기 모드)">
+                                         <AlertTriangle size={8} /> 전체 읽기 (대기 시간 김)
                                        </span>
                                      )}
                                   </div>

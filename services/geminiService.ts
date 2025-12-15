@@ -25,80 +25,6 @@ const SAFETY_SETTINGS = [
   { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
 ];
 
-// --- Local RAG Helper Functions ---
-
-/**
- * Split text into chunks (paragraphs or fixed size)
- */
-const splitIntoChunks = (text: string, chunkSize: number = 1000): string[] => {
-  // Primarily split by double newlines (paragraphs)
-  const paragraphs = text.split(/\n\s*\n/);
-  const chunks: string[] = [];
-  
-  for (const para of paragraphs) {
-    if (para.length > chunkSize) {
-      // If paragraph is too huge, split by length
-      for (let i = 0; i < para.length; i += chunkSize) {
-        chunks.push(para.slice(i, i + chunkSize));
-      }
-    } else if (para.trim().length > 0) {
-      chunks.push(para);
-    }
-  }
-  return chunks;
-};
-
-/**
- * Simple keyword extraction and scoring to find relevant context
- */
-const findRelevantChunks = (query: string, fullText: string, topK: number = 8): string => {
-  if (!fullText || fullText.length < 5000) return fullText; // Return all if small enough
-
-  const chunks = splitIntoChunks(fullText);
-  
-  // Tokenize query: remove special chars, split by space, filter empty
-  const queryTerms = query.replace(/[^\w\s\uAC00-\uD7A3]/g, ' ').split(/\s+/).filter(t => t.length > 1);
-  
-  if (queryTerms.length === 0) {
-      // If no valid keywords (e.g. "summarize this"), take beginning, middle, and end samples
-      const start = chunks.slice(0, 3).join('\n\n');
-      const mid = chunks.slice(Math.floor(chunks.length / 2), Math.floor(chunks.length / 2) + 2).join('\n\n');
-      const end = chunks.slice(-3).join('\n\n');
-      return `[Note: Query was generic, providing samples from text]\n\n--- Beginning ---\n${start}\n\n--- Middle ---\n${mid}\n\n--- End ---\n${end}`;
-  }
-
-  const scores = chunks.map((chunk, index) => {
-    let score = 0;
-    const chunkText = chunk.toLowerCase();
-    
-    // Term Frequency Scoring
-    queryTerms.forEach(term => {
-       if (chunkText.includes(term.toLowerCase())) {
-         score += 1;
-         // Bonus for exact phrases if possible, but keeping it simple for now
-       }
-    });
-
-    // Recency Bias (Slightly prefer later chunks for plot progression, if scores are equal)
-    const positionBias = index / chunks.length * 0.1; 
-
-    return { index, chunk, score: score + positionBias };
-  });
-
-  // Sort by score descending
-  scores.sort((a, b) => b.score - a.score);
-
-  // Take top K chunks
-  const topChunks = scores.slice(0, topK);
-  
-  // Re-sort by original index to maintain narrative flow
-  topChunks.sort((a, b) => a.index - b.index);
-
-  return topChunks.map(item => item.chunk).join('\n\n...\n\n');
-};
-
-// --- End Local RAG Helpers ---
-
 const getPromptForMode = (mode: AIRevisionMode, text: string): string => {
   const formatNote = "매우 중요: 1. 원문의 줄바꿈(엔터) 위치와 문단 구분을 **절대 변경하지 마세요**. 문단을 합치거나 나누지 말고 원형을 유지하세요. 2. 입력된 문장이 미완성(끊김) 상태라면, 문맥에 맞게 자연스럽게 문장을 완성시킨 후 수정하세요.";
   
@@ -163,11 +89,11 @@ const handleGeminiError = (error: any, modelName: string) => {
 
         throw new Error(
             `[사용량 한도 초과 (429)]\n` +
-            `선택하신 '${modelName}' 모델의 사용량이 소진되었습니다.\n\n` +
+            `AI 모델이 현재 과부하 상태입니다.\n\n` +
             `${limitExplanation}\n\n` +
             `[해결 방법]\n` +
-            `1. **참조 파일 확인**: 참조 파일이 너무 크면(예: 소설 전체), AI가 검색하여 일부만 읽도록 시스템이 자동 처리하지만, 여전히 부하가 클 수 있습니다.\n` +
-            `2. **새로운 대화 시작**: 대화 내용이 길어지면 토큰 소모량이 급증합니다.\n` +
+            `1. **자동 재시도 실패**: 시스템이 여러 번 재시도했으나 실패했습니다.\n` +
+            `2. **Pro 모델 주의**: Pro 모델은 2MB 이상의 파일을 무료로 처리하기 어렵습니다. 'Flash' 모델을 사용하세요.\n` +
             `3. **잠시 대기**: 1~2분 후 다시 시도해보세요.`
         );
     }
@@ -241,7 +167,8 @@ const wait = (ms: number, signal?: AbortSignal) => new Promise<void>((resolve, r
     signal?.addEventListener('abort', abortHandler);
 });
 
-async function retryWithBackoff<T>(fn: () => Promise<T>, retries = 3, delay = 1000, signal?: AbortSignal): Promise<T> {
+// Enhanced Retry Logic for Large Files
+async function retryWithBackoff<T>(fn: () => Promise<T>, retries = 5, delay = 2000, signal?: AbortSignal): Promise<T> {
   try {
     return await raceWithSignal(fn(), signal);
   } catch (error: any) {
@@ -251,23 +178,25 @@ async function retryWithBackoff<T>(fn: () => Promise<T>, retries = 3, delay = 10
     if (msg.includes('aborted') || msg.includes('cancelled') || msg.includes('Operation cancelled')) {
       throw error;
     }
-    if (isQuotaError(error) || msg.includes('SAFETY') || msg.includes('blocked') || status === 404) {
+    
+    // Safety & NotFound are fatal
+    if (msg.includes('SAFETY') || msg.includes('blocked') || status === 404) {
       throw error; 
     }
     
-    const shouldRetry = retries > 0 && (
-      msg.includes('xhr error') || 
-      msg.includes('fetch failed') || 
-      msg.includes('NetworkError') ||
-      status === 500 || 
-      status === 503 ||
-      status === 'UNKNOWN'
-    );
+    // Check for Quota (429) OR Network Errors
+    const isQuota = isQuotaError(error);
+    const isNetwork = msg.includes('xhr error') || msg.includes('fetch failed') || msg.includes('NetworkError') || status === 503;
 
-    if (shouldRetry) {
-      console.warn(`API request failed (Status: ${status}). Retrying in ${delay}ms... (${retries} attempts left)`);
-      await wait(delay, signal);
-      return retryWithBackoff(fn, retries - 1, delay * 2, signal);
+    if ((isQuota || isNetwork) && retries > 0) {
+      // If Quota error, increase delay significantly (trade time for token bucket refill)
+      const nextDelay = isQuota ? Math.max(delay * 1.5, 5000) : delay * 2;
+      
+      console.warn(`API request failed (Status: ${status}). Retrying in ${nextDelay/1000}s... (${retries} attempts left)`);
+      
+      // Wait and retry
+      await wait(nextDelay, signal);
+      return retryWithBackoff(fn, retries - 1, nextDelay, signal);
     }
     
     throw error;
@@ -329,8 +258,14 @@ export const chatWithAssistant = async (
   const key = (apiKey || process.env.API_KEY || '').trim();
   if (!key) throw new Error("API Key is missing. Please check your settings.");
 
-  // Character Budget to avoid TPM errors.
-  const MAX_HISTORY_CHARS = 15000; 
+  // Calculate total file size from persona
+  const totalFileChars = persona?.files?.reduce((acc, f) => acc + f.content.length, 0) || 0;
+  
+  // Dynamic Budget: If files are huge, reduce history budget to near zero.
+  // Standard budget: 20k chars (~5k tokens)
+  // Large file budget: reserve almost everything for the file.
+  const isHeavyContext = totalFileChars > 50000;
+  const MAX_HISTORY_CHARS = isHeavyContext ? 1000 : 20000; 
   
   let currentChars = 0;
   const reversedHistory = [...history].reverse();
@@ -349,7 +284,6 @@ export const chatWithAssistant = async (
 
   const optimizedHistory = selectedMessages.reverse();
 
-  // Construct Content Parts
   const contents = optimizedHistory.map(msg => {
     const parts: Part[] = [];
     if (msg.attachments) {
@@ -359,10 +293,8 @@ export const chatWithAssistant = async (
             inlineData: { mimeType: att.mimeType, data: att.data }
           });
         } else {
-          // Note: Previous logic handled text files as simple text attachments in history.
-          // For LARGE files in history, we should probably summarize or skip, but for now we assume simple attachments.
           parts.push({
-            text: `[Attached File: ${att.name}]\n${att.data.substring(0, 5000)} ${att.data.length > 5000 ? '...(truncated in history)' : ''}\n`
+            text: `[Attached File: ${att.name}]\n${att.data.substring(0, 5000)}...\n`
           });
         }
       });
@@ -371,27 +303,19 @@ export const chatWithAssistant = async (
     return { role: msg.role, parts: parts };
   });
     
-  // Current Turn Attachments
   const newParts: Part[] = [];
   if (attachments && attachments.length > 0) {
       attachments.forEach(att => {
          if (att.type === 'image') {
            newParts.push({ inlineData: { mimeType: att.mimeType, data: att.data } });
          } else {
-           // For current turn attachments, if they are small, send as is.
-           // If they are large (e.g. user just uploaded the novel now), we will treat them via System Instruction RAG
-           // to ensure we don't blow the context immediately.
-           // BUT, the 'contents' part of generateContent is strict.
-           // Let's attach them here if small, or rely on Persona files if they are configured there.
-           // Assuming 'attachments' in chat are usually small/temporary context.
-           newParts.push({ text: `[File Attachment: ${att.name}]\n${att.data.substring(0, 10000)}\n` });
+           newParts.push({ text: `[File Attachment: ${att.name}]\n${att.data}\n` });
          }
       });
   }
   newParts.push({ text: newMessage });
   contents.push({ role: 'user', parts: newParts });
 
-  // --- Dynamic System Instruction (RAG Implementation) ---
   let baseInstruction = "You are a helpful assistant for a web novel writer (Google Gemini). You can search the web for real-time information if needed. Provide concise, creative, and accurate answers regarding plotting, character names, settings, synonyms, and general knowledge. You communicate in Korean. When files are attached, analyze them to assist the user. IMPORTANT: Use **bold text** (**text**) to emphasize key terms, headers, names, or important conclusions to improve readability.";
   
   if (persona) {
@@ -403,25 +327,16 @@ export const chatWithAssistant = async (
           personaInstruction += `\n\n[KNOWLEDGE BASE]\n${persona.knowledge}`;
       }
       
-      // RAG Logic for Attached Knowledge Files
+      // FULL CONTENT INCLUSION STRATEGY
+      // Replaces RAG logic. We dump the whole file into System Instruction.
       if (persona.files && persona.files.length > 0) {
-         personaInstruction += `\n\n[ATTACHED REFERENCE MATERIALS]`;
+         personaInstruction += `\n\n[ATTACHED REFERENCE MATERIALS (NOVEL/CONTEXT)]`;
          
          persona.files.forEach(file => {
-           const FILE_RAG_THRESHOLD = 20000; // 20k chars limit for direct inclusion
-           
-           if (file.content.length <= FILE_RAG_THRESHOLD) {
-               // Small file: Include directly
-               personaInstruction += `\n--- FILE: ${file.name} ---\n${file.content}\n--- END OF FILE ---\n`;
-           } else {
-               // Large file: Perform Keyword Search (Client-side RAG)
-               // This allows users to "upload the whole novel" (2-3MB) and query it.
-               const relevantContext = findRelevantChunks(newMessage, file.content, 10); // Get top 10 chunks (~5k-10k chars)
-               personaInstruction += `\n--- LARGE FILE: ${file.name} (Dynamically Retrieved Excerpts) ---\n`;
-               personaInstruction += `The user is asking about: "${newMessage}".\n`;
-               personaInstruction += `Here are the most relevant sections extracted from the full document:\n\n${relevantContext}\n`;
-               personaInstruction += `\n(Note: This is a partial view of the file based on the user's query.)\n--- END OF EXCERPTS ---\n`;
-           }
+             // Simply include the full content. 
+             // Gemini 1.5 Flash has 1M context. 2-3MB text is roughly 1M tokens or less.
+             // Warning: This consumes massive quota per request.
+             personaInstruction += `\n--- START OF FILE: ${file.name} ---\n${file.content}\n--- END OF FILE ---\n`;
          });
       }
       
@@ -432,6 +347,7 @@ export const chatWithAssistant = async (
 
   const performChat = async (targetModel: string) => {
     const ai = new GoogleGenAI({ apiKey: key });
+    // Aggressive Retry: 5 attempts, starting with 5s delay.
     return await retryWithBackoff<GenerateContentResponse>(() => ai.models.generateContent({
       model: targetModel,
       contents: contents,
@@ -440,7 +356,7 @@ export const chatWithAssistant = async (
         systemInstruction: baseInstruction,
         safetySettings: SAFETY_SETTINGS, 
       }
-    }), 3, 1000);
+    }), 5, 5000); 
   };
 
   try {
