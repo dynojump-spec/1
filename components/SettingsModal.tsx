@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Plus, Trash2, Keyboard, Command, Type, Palette, Cpu, Download, Upload, AlignJustify, AlignLeft, Wand2, Key, Eye, EyeOff, MessageSquare, Volume2, Indent, Bot, PanelLeft, PanelRight, BookOpen, UserCircle, PenTool, FileUp, FileText, RotateCcw, ExternalLink, Database, Save, FolderUp, Folder, PaintBucket, AlertTriangle } from 'lucide-react';
+import { X, Plus, Trash2, Keyboard, Command, Type, Palette, Cpu, Download, Upload, AlignJustify, AlignLeft, Wand2, Key, Eye, EyeOff, MessageSquare, Volume2, Indent, Bot, PanelLeft, PanelRight, BookOpen, UserCircle, PenTool, FileUp, FileText, RotateCcw, ExternalLink, Database, Save, FolderUp, Folder, PaintBucket, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { AppSettings, FontType, Snippet, SnippetType, AVAILABLE_MODELS, AIRevisionMode, KnowledgeFile } from '../types';
 import { getDefaultSettings } from '../services/storageService';
 import { v4 as uuidv4 } from 'uuid';
@@ -248,15 +248,15 @@ const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUpdate })
         });
     };
 
-    // Check sizes first
+    // Warn only if extremely large (> 10MB)
     for (let i = 0; i < files.length; i++) {
-        if (files[i].size > 500 * 1024) {
+        if (files[i].size > 10 * 1024 * 1024) {
              largeFileWarningShown = true;
         }
     }
 
     if (largeFileWarningShown) {
-        alert("주의: 일부 파일 용량이 큽니다.\n\n파일이 너무 크면 AI 응답이 실패하거나 사용량 한도(Quota)를 초과할 수 있습니다.");
+        alert("주의: 10MB가 넘는 매우 큰 파일은 브라우저 성능을 저하시킬 수 있습니다.");
     }
 
     // Read all files
@@ -372,7 +372,7 @@ const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUpdate })
         rightAssistantModel: settings.rightAssistantModel,
         leftAssistantPersona: settings.leftAssistantPersona,
         rightAssistantPersona: settings.rightAssistantPersona,
-        enableSaveAsDialog: settings.enableSaveAsDialog, // Optionally preserve this too? Let's reset it to default (true) or user pref. Let's keep it user pref for safety.
+        enableSaveAsDialog: settings.enableSaveAsDialog, 
       };
 
       onUpdate(newSettings);
@@ -868,7 +868,11 @@ const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUpdate })
                                <div className="flex flex-col min-w-0">
                                   <div className="flex items-center gap-2">
                                      <span className="text-xs text-zinc-300 truncate font-medium">{file.name}</span>
-                                     {(file.size > 50000) && <AlertTriangle size={10} className="text-yellow-500" title="용량이 큼 (자동 요약됨)" />}
+                                     {(file.size > 20000) && (
+                                       <span className="text-[10px] text-green-400 flex items-center gap-0.5 bg-green-900/20 px-1 rounded border border-green-900/50" title="파일이 커서 AI가 필요한 부분만 자동으로 검색하여 읽습니다 (스마트 발췌)">
+                                         <CheckCircle2 size={8} /> 스마트 검색 ON
+                                       </span>
+                                     )}
                                   </div>
                                   <span className="text-[10px] text-zinc-500">{(file.size / 1024).toFixed(1)} KB</span>
                                </div>
@@ -893,7 +897,7 @@ const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUpdate })
               </div>
             </div>
           )}
-
+          {/* ... (Rest of the file unchanged) ... */}
           {activeTab === 'shortcuts' && (
             <div className="space-y-6">
               {/* Import/Export Actions */}
