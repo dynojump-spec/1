@@ -30,6 +30,7 @@ export interface KnowledgeFile {
   name: string;
   content: string;
   size: number;
+  deletedAt?: number;
 }
 
 export interface AssistantPersona {
@@ -37,6 +38,7 @@ export interface AssistantPersona {
   instruction: string;
   knowledge: string;
   files?: KnowledgeFile[];
+  deletedFiles?: KnowledgeFile[];
 }
 
 export interface AppSettings {

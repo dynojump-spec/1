@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Plus, Trash2, Keyboard, Command, Type, Palette, Cpu, Download, Upload, AlignJustify, AlignLeft, Wand2, Key, Eye, EyeOff, MessageSquare, Volume2, Indent, Bot, PanelLeft, PanelRight, BookOpen, UserCircle, PenTool, FileUp, FileText, RotateCcw, ExternalLink, Database, Save, FolderUp, Folder, PaintBucket, AlertTriangle, CheckCircle2, Cloud, CloudUpload, Loader2, Info, HelpCircle, List, ShieldAlert } from 'lucide-react';
+import { X, Plus, Trash2, Keyboard, Command, Type, Palette, Cpu, Download, Upload, AlignJustify, AlignLeft, Wand2, Key, Eye, EyeOff, MessageSquare, Volume2, Indent, Bot, PanelLeft, PanelRight, BookOpen, UserCircle, PenTool, FileUp, FileText, RotateCcw, ExternalLink, Database, Save, FolderUp, Folder, PaintBucket, AlertTriangle, CheckCircle2, Cloud, CloudUpload, Loader2, Info, HelpCircle, List, ShieldAlert, ChevronDown, ChevronUp, Link as LinkIcon } from 'lucide-react';
 import { AppSettings, FontType, Snippet, SnippetType, AVAILABLE_MODELS, AIRevisionMode, KnowledgeFile } from '../types';
 import { getDefaultSettings } from '../services/storageService';
 import { v4 as uuidv4 } from 'uuid';
@@ -44,9 +44,12 @@ const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUpdate })
   const [driveBackups, setDriveBackups] = useState<DriveBackupFile[]>([]);
   const [isFetchingBackups, setIsFetchingBackups] = useState(false);
   const [showDriveGuide, setShowDriveGuide] = useState(false);
+  const [showGeminiGuide, setShowGeminiGuide] = useState(false);
+  const [showDriveDetailedStep, setShowDriveDetailedStep] = useState(false);
   
   // Assistant Tab State
   const [assistantTabMode, setAssistantTabMode] = useState<'left' | 'right'>('right');
+  const [isTrashOpen, setIsTrashOpen] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const knowledgeFileInputRef = useRef<HTMLInputElement>(null);
@@ -62,6 +65,9 @@ const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUpdate })
       setDriveStatus('idle');
       setDriveBackups([]);
       setShowDriveGuide(false);
+      setShowGeminiGuide(false);
+      setShowDriveDetailedStep(false);
+      setIsTrashOpen(false);
     }
   }, [isOpen]);
 
@@ -235,6 +241,29 @@ const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUpdate })
     if (knowledgeFileInputRef.current) knowledgeFileInputRef.current.value = '';
   };
 
+  const moveFileToTrash = (file: KnowledgeFile) => {
+     const persona = getAssistantConfig().persona;
+     const updatedFiles = (persona.files || []).filter(f => f.id !== file.id);
+     const updatedTrash = [...(persona.deletedFiles || []), { ...file, deletedAt: Date.now() }];
+     updateAssistantConfig('files', updatedFiles);
+     updateAssistantConfig('deletedFiles', updatedTrash);
+  };
+
+  const restoreFileFromTrash = (file: KnowledgeFile) => {
+     const persona = getAssistantConfig().persona;
+     const updatedTrash = (persona.deletedFiles || []).filter(f => f.id !== file.id);
+     const updatedFiles = [...(persona.files || []), { ...file, deletedAt: undefined }];
+     updateAssistantConfig('deletedFiles', updatedTrash);
+     updateAssistantConfig('files', updatedFiles);
+  };
+
+  const permanentlyDeleteFile = (fileId: string) => {
+     if (!window.confirm("파일을 영구적으로 삭제하시겠습니까?")) return;
+     const persona = getAssistantConfig().persona;
+     const updatedTrash = (persona.deletedFiles || []).filter(f => f.id !== fileId);
+     updateAssistantConfig('deletedFiles', updatedTrash);
+  };
+
   // --- Shortcuts Helpers ---
   const handleKeyDownCapture = (e: React.KeyboardEvent) => {
     e.preventDefault(); e.stopPropagation();
@@ -284,9 +313,24 @@ const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUpdate })
           {activeTab === 'general' && (
             <div className="space-y-6">
               <div className="bg-blue-900/10 p-4 rounded-lg border border-blue-900/30">
-                <label className="block mb-2 text-sm font-bold text-zinc-300 flex items-center gap-2"><Key size={16} className="text-blue-400" /> Gemini API Key</label>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-sm font-bold text-zinc-300 flex items-center gap-2"><Key size={16} className="text-blue-400" /> Gemini API Key</label>
+                  <button onClick={() => setShowGeminiGuide(!showGeminiGuide)} className="text-[10px] text-blue-400 flex items-center gap-1 hover:underline"><HelpCircle size={12}/> 발급 방법</button>
+                </div>
+                
+                {showGeminiGuide && (
+                  <div className="mb-4 p-3 bg-zinc-950 border border-blue-900/50 rounded-lg text-xs leading-relaxed animate-in fade-in slide-in-from-top-2">
+                    <p className="text-blue-400 font-bold mb-2 flex items-center gap-2"><Info size={14}/> 30초만에 API 키 만들기</p>
+                    <ol className="space-y-2 text-zinc-400 list-decimal list-inside">
+                      <li><a href="https://aistudio.google.com/app/apikey" target="_blank" className="text-zinc-200 underline font-bold inline-flex items-center gap-1">Google AI Studio <ExternalLink size={10}/></a> 에 접속합니다.</li>
+                      <li><strong>'Create API key'</strong> 버튼을 클릭합니다.</li>
+                      <li>생성된 영문+숫자 혼합 키를 복사하여 아래에 입력하세요.</li>
+                    </ol>
+                  </div>
+                )}
+
                 <div className="relative">
-                  <input type={showApiKey ? "text" : "password"} value={settings.apiKey || ''} onChange={(e) => onUpdate({ ...settings, apiKey: e.target.value })} placeholder="API 키를 입력하세요" className="w-full p-3 rounded border border-zinc-700 bg-zinc-900 text-zinc-200 text-sm focus:border-blue-500 font-mono outline-none" />
+                  <input type={showApiKey ? "text" : "password"} value={settings.apiKey || ''} onChange={(e) => onUpdate({ ...settings, apiKey: e.target.value })} placeholder="여기에 복사한 API 키를 입력하세요" className="w-full p-3 rounded border border-zinc-700 bg-zinc-900 text-zinc-200 text-sm focus:border-blue-500 font-mono outline-none" />
                   <button onClick={() => setShowApiKey(!showApiKey)} className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500">{showApiKey ? <EyeOff size={16} /> : <Eye size={16} />}</button>
                 </div>
               </div>
@@ -310,19 +354,38 @@ const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUpdate })
               </div>
 
               <div className="bg-zinc-800/50 p-4 rounded-lg border border-zinc-800">
-                <label className="block mb-3 text-sm font-bold text-zinc-200 flex items-center gap-2"><Cloud size={16} className="text-blue-400" /> Google Drive 클라우드 백업</label>
+                <div className="flex items-center justify-between mb-3">
+                  <label className="text-sm font-bold text-zinc-200 flex items-center gap-2"><Cloud size={16} className="text-blue-400" /> Google Drive 클라우드 백업</label>
+                  <button onClick={() => setShowDriveDetailedStep(!showDriveDetailedStep)} className="text-[10px] text-blue-400 flex items-center gap-1 hover:underline"><HelpCircle size={12}/> 설정 방법 (필독)</button>
+                </div>
+
                 <div className="space-y-4">
+                   {showDriveDetailedStep && (
+                     <div className="p-4 bg-zinc-950 border border-zinc-700 rounded-lg text-xs leading-relaxed animate-in fade-in slide-in-from-top-2">
+                        <p className="text-blue-400 font-bold mb-3 flex items-center gap-2"><Info size={14}/> 구글 드라이브 연동 가이드</p>
+                        <ol className="space-y-3 text-zinc-400 list-decimal list-inside">
+                          <li><a href="https://console.cloud.google.com/" target="_blank" className="text-zinc-200 underline font-bold inline-flex items-center gap-1">Google Cloud Console <ExternalLink size={10}/></a> 접속 후 <strong>'프로젝트 생성'</strong></li>
+                          <li><strong>API 및 서비스 > 라이브러리</strong>에서 <strong>'Google Drive API'</strong> 검색 후 활성화</li>
+                          <li><strong>OAuth 동의 화면</strong>: '외부' 선택 -> 앱 정보 입력 -> 하단 <strong>'테스트 사용자'</strong>에 본인 Gmail 꼭 추가</li>
+                          <li><strong>사용자 인증 정보 > 인증 정보 만들기 > OAuth 클라이언트 ID</strong> 클릭</li>
+                          <li>유형: <strong>'웹 애플리케이션'</strong> / 승인된 자바스크립트 원본: <code className="bg-zinc-800 px-1 py-0.5 rounded text-blue-300 font-mono">{window.location.origin}</code> 입력</li>
+                          <li>생성된 <strong>'클라이언트 ID'</strong>를 아래 입력창에 붙여넣으세요.</li>
+                        </ol>
+                        <button onClick={() => setShowDriveDetailedStep(false)} className="mt-3 w-full py-2 bg-zinc-800 rounded text-zinc-300 text-[10px]">설명 닫기</button>
+                     </div>
+                   )}
+
                    {showDriveGuide && (
                      <div className="p-4 bg-red-950/30 border border-red-800/50 rounded-lg animate-in fade-in slide-in-from-top-2">
                        <div className="flex items-start gap-3">
                          <ShieldAlert className="text-red-500 shrink-0 mt-0.5" size={18} />
                          <div>
                            <p className="text-sm font-bold text-red-400 mb-2">403: access_denied 오류 발생 시</p>
+                           <p className="text-xs text-zinc-400 mb-2 leading-relaxed">아직 본인 계정이 '테스트 사용자'로 등록되지 않았습니다.</p>
                            <ol className="text-xs text-zinc-400 space-y-1.5 list-decimal list-inside">
-                             <li><a href="https://console.cloud.google.com/apis/credentials/consent" target="_blank" className="text-blue-400 hover:underline">Google Console</a>에 접속합니다.</li>
-                             <li><strong>'OAuth 동의 화면'</strong> 메뉴를 선택합니다.</li>
-                             <li>하단 <strong>'테스트 사용자'</strong> 섹션에서 <strong>[+ ADD USERS]</strong>를 누릅니다.</li>
-                             <li>본인 이메일(<code>dynojump@gmail.com</code>)을 입력하고 <strong>저장</strong>합니다.</li>
+                             <li><a href="https://console.cloud.google.com/apis/credentials/consent" target="_blank" className="text-blue-400 hover:underline">OAuth 동의 화면</a>으로 이동</li>
+                             <li>하단 <strong>'테스트 사용자'</strong> 섹션에서 <strong>[+ ADD USERS]</strong> 클릭</li>
+                             <li>본인 Gmail 주소를 입력하고 <strong>저장</strong></li>
                            </ol>
                            <button onClick={() => setShowDriveGuide(false)} className="mt-3 text-[10px] text-zinc-500 hover:text-zinc-300 underline">안내 숨기기</button>
                          </div>
@@ -331,11 +394,8 @@ const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUpdate })
                    )}
 
                    <div>
-                     <label className="block mb-1 text-xs text-zinc-400 flex items-center justify-between">
-                       <span>OAuth Client ID</span>
-                       <button onClick={() => setShowDriveGuide(!showDriveGuide)} className="text-blue-400 flex items-center gap-1 text-[10px] hover:underline"><HelpCircle size={10}/> 403 오류 해결법</button>
-                     </label>
-                     <input type="text" value={settings.driveClientId || ''} onChange={(e) => onUpdate({ ...settings, driveClientId: e.target.value })} placeholder="Client ID를 입력하세요" className="w-full p-2.5 rounded border border-zinc-700 bg-zinc-900 text-zinc-300 text-xs focus:border-blue-500 font-mono outline-none" />
+                     <label className="block mb-1 text-xs text-zinc-400">OAuth Client ID</label>
+                     <input type="text" value={settings.driveClientId || ''} onChange={(e) => onUpdate({ ...settings, driveClientId: e.target.value })} placeholder="예: 123456-abcde.apps.googleusercontent.com" className="w-full p-2.5 rounded border border-zinc-700 bg-zinc-900 text-zinc-300 text-xs focus:border-blue-500 font-mono outline-none" />
                    </div>
 
                    <div className="grid grid-cols-2 gap-2">
@@ -404,10 +464,42 @@ const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUpdate })
                       {(getAssistantConfig().persona?.files || []).map((file) => (
                          <div key={file.id} className="flex items-center justify-between p-2 rounded bg-zinc-950 border border-zinc-800 text-xs group">
                             <span className="truncate text-zinc-300 flex items-center gap-2"><FileText size={12} className="text-zinc-500 shrink-0" />{file.name}</span>
-                            <button onClick={() => updateAssistantConfig('files', getAssistantConfig().persona.files?.filter(f => f.id !== file.id))} className="text-zinc-600 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"><Trash2 size={12} /></button>
+                            <button onClick={() => moveFileToTrash(file)} className="text-zinc-600 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100 p-1" title="휴지통으로 이동"><Trash2 size={12} /></button>
                          </div>
                       ))}
                       {(getAssistantConfig().persona?.files?.length === 0) && <p className="text-center text-[10px] text-zinc-600 py-4 border border-dashed border-zinc-800 rounded">참조 파일이 없습니다.</p>}
+                    </div>
+
+                    {/* Deleted Files Trash Section */}
+                    <div className="mt-4 pt-4 border-t border-zinc-700/50">
+                       <button 
+                          onClick={() => setIsTrashOpen(!isTrashOpen)}
+                          className="flex items-center justify-between w-full text-[10px] font-bold text-zinc-500 hover:text-zinc-300 transition-colors py-1 uppercase tracking-wider"
+                       >
+                          <span className="flex items-center gap-1.5"><Trash2 size={12}/> 휴지통 ({getAssistantConfig().persona?.deletedFiles?.length || 0})</span>
+                          {isTrashOpen ? <ChevronUp size={12}/> : <ChevronDown size={12}/>}
+                       </button>
+                       
+                       {isTrashOpen && (
+                          <div className="mt-2 space-y-2 animate-in slide-in-from-top-1 fade-in duration-200">
+                             {(getAssistantConfig().persona?.deletedFiles || []).length > 0 ? (
+                                (getAssistantConfig().persona?.deletedFiles || []).map(file => (
+                                   <div key={file.id} className="flex items-center justify-between p-2 rounded bg-red-950/10 border border-red-900/20 text-xs group">
+                                      <div className="flex flex-col min-w-0">
+                                         <span className="truncate text-zinc-500 flex items-center gap-2"><FileText size={12}/>{file.name}</span>
+                                         {file.deletedAt && <span className="text-[8px] text-zinc-600 pl-5">{new Date(file.deletedAt).toLocaleString()}</span>}
+                                      </div>
+                                      <div className="flex items-center gap-1">
+                                         <button onClick={() => restoreFileFromTrash(file)} className="p-1 text-zinc-500 hover:text-green-400 transition-colors" title="복원"><RotateCcw size={12}/></button>
+                                         <button onClick={() => permanentlyDeleteFile(file.id)} className="p-1 text-zinc-500 hover:text-red-500 transition-colors" title="영구 삭제"><Trash2 size={12}/></button>
+                                      </div>
+                                   </div>
+                                ))
+                             ) : (
+                                <p className="text-center text-[10px] text-zinc-700 py-2 italic">휴지통이 비어있습니다.</p>
+                             )}
+                          </div>
+                       )}
                     </div>
                   </div>
                 </div>

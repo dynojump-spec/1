@@ -127,7 +127,8 @@ export const getDefaultSettings = (): AppSettings => ({
 8.문장간의 화면 전환이나 상황 전환의 연결이 어색하고 매끄럽지 못하면 너가 보완 수정해줘.
 9.웹소설 내용들을 파악하고, 맥락이 맞는지 정밀하게 검토해줘.`,
     knowledge: '',
-    files: []
+    files: [],
+    deletedFiles: []
   },
   rightAssistantPersona: {
     name: '설정 및 고증 담당',
@@ -174,7 +175,8 @@ export const getDefaultSettings = (): AppSettings => ({
 
 요청이 없으면 임의로 세계관을 크게 변형하지 않는다.`,
     knowledge: '',
-    files: []
+    files: [],
+    deletedFiles: []
   },
 
   apiKey: '',
@@ -319,7 +321,9 @@ export const getLocalSettings = (): AppSettings | null => {
   if (!parsed.rightAssistantPersona) parsed.rightAssistantPersona = defaults.rightAssistantPersona;
 
   if (parsed.leftAssistantPersona && !parsed.leftAssistantPersona.files) parsed.leftAssistantPersona.files = [];
+  if (parsed.leftAssistantPersona && !parsed.leftAssistantPersona.deletedFiles) parsed.leftAssistantPersona.deletedFiles = [];
   if (parsed.rightAssistantPersona && !parsed.rightAssistantPersona.files) parsed.rightAssistantPersona.files = [];
+  if (parsed.rightAssistantPersona && !parsed.rightAssistantPersona.deletedFiles) parsed.rightAssistantPersona.deletedFiles = [];
 
   if (!parsed.assistantFontSize) parsed.assistantFontSize = defaults.assistantFontSize;
   if (typeof parsed.soundVolume === 'undefined') parsed.soundVolume = defaults.soundVolume;
