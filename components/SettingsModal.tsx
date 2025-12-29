@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Plus, Trash2, Keyboard, Command, Type, Palette, Cpu, Download, Upload, AlignJustify, AlignLeft, Wand2, Key, Eye, EyeOff, MessageSquare, Volume2, Indent, Bot, PanelLeft, PanelRight, BookOpen, UserCircle, PenTool, FileUp, FileText, RotateCcw, ExternalLink, Database, Save, FolderUp, Folder, PaintBucket, AlertTriangle, CheckCircle2, Cloud, Loader2, Info } from 'lucide-react';
+import { X, Plus, Trash2, Keyboard, Command, Type, Palette, Cpu, Download, Upload, AlignJustify, AlignLeft, Wand2, Key, Eye, EyeOff, MessageSquare, Volume2, Indent, Bot, PanelLeft, PanelRight, BookOpen, UserCircle, PenTool, FileUp, FileText, RotateCcw, ExternalLink, Database, Save, FolderUp, Folder, PaintBucket, AlertTriangle, CheckCircle2, Cloud, Loader2, Info, HelpCircle } from 'lucide-react';
 import { AppSettings, FontType, Snippet, SnippetType, AVAILABLE_MODELS, AIRevisionMode, KnowledgeFile } from '../types';
 import { getDefaultSettings } from '../services/storageService';
 import { v4 as uuidv4 } from 'uuid';
@@ -93,6 +93,19 @@ const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUpdate })
             console.error("Token Error:", tokenResponse.error);
             setDriveStatus('error');
             setIsDriveLoading(false);
+            
+            // Handle specific 403 access_denied
+            if (tokenResponse.error === 'access_denied') {
+              alert(
+                "⚠️ 액세스가 거부되었습니다.\n\n" +
+                "해결 방법:\n" +
+                "1. Google Cloud Console의 'OAuth 동의 화면' 메뉴로 이동합니다.\n" +
+                "2. '테스트 사용자(Test users)' 섹션에 본인의 이메일을 추가했는지 확인하세요.\n" +
+                "3. 추가하지 않았다면 본인 이메일을 등록해야만 앱을 사용할 수 있습니다."
+              );
+            } else {
+              alert(`인증 오류가 발생했습니다: ${tokenResponse.error_description || tokenResponse.error}`);
+            }
             return;
           }
           
@@ -125,11 +138,11 @@ const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUpdate })
         },
       });
       client.requestAccessToken();
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
       setDriveStatus('error');
       setIsDriveLoading(false);
-      alert("백업 중 오류가 발생했습니다. Client ID가 유효한지, 그리고 승인된 도메인인지 확인해주세요.");
+      alert("백업 프로세스 중 치명적인 오류가 발생했습니다. Client ID가 유효한지 확인해주세요.");
     }
   };
 
@@ -266,16 +279,23 @@ const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUpdate })
                 </select>
               </div>
 
-              {/* Drive Sync Section */}
+              {/* Enhanced Drive Sync Section with Troubleshooting */}
               <div className="bg-zinc-800/50 p-4 rounded-lg border border-zinc-800">
                 <label className="block mb-3 text-sm font-bold text-zinc-200 flex items-center gap-2">
                   <Cloud size={16} className="text-blue-400" /> Google Drive 클라우드 백업
                 </label>
                 <div className="space-y-4">
+                   <div className="p-3 bg-red-900/10 border border-red-800/30 rounded-lg">
+                     <p className="text-[10px] text-red-400 font-bold mb-1 flex items-center gap-1"><HelpCircle size={10}/> 403: access_denied 오류 해결법</p>
+                     <p className="text-[9px] text-zinc-400 leading-relaxed">
+                       구글 콘솔의 <strong>'OAuth 동의 화면'</strong> 메뉴에서 하단의 <strong>'테스트 사용자'</strong>에 본인 이메일을 추가해야 합니다.
+                     </p>
+                   </div>
+
                    <div>
                      <label className="block mb-1 text-xs text-zinc-400 flex items-center justify-between">
                        <span>Google OAuth Client ID</span>
-                       <a href="https://console.cloud.google.com/" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline flex items-center gap-1">콘솔 열기 <ExternalLink size={10}/></a>
+                       <a href="https://console.cloud.google.com/apis/credentials/consent" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline flex items-center gap-1 text-[10px]">콘솔 동의화면 <ExternalLink size={10}/></a>
                      </label>
                      <input
                        type="text"
@@ -284,9 +304,6 @@ const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUpdate })
                        placeholder="예: 12345-abcde.apps.googleusercontent.com"
                        className="w-full p-2.5 rounded border border-zinc-700 bg-zinc-900 text-zinc-300 text-xs focus:border-blue-500 font-mono"
                      />
-                     <p className="mt-1 text-[9px] text-zinc-500 leading-tight">
-                       * 오류 401(invalid_client)이 발생하면 자신의 클라우드 콘솔에서 발급받은 ID를 입력하세요.
-                     </p>
                    </div>
 
                    <div className="flex items-center justify-between p-3 bg-zinc-950 rounded border border-zinc-800">
@@ -319,7 +336,6 @@ const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUpdate })
                   <button onClick={() => {}} className="flex items-center justify-center gap-2 px-3 py-2.5 bg-zinc-700 text-zinc-200 rounded-lg text-xs font-bold hover:bg-zinc-600 transition-colors"><Save size={14} /> 수동 다운로드</button>
                   <button onClick={() => backupFileInputRef.current?.click()} className="flex items-center justify-center gap-2 px-3 py-2.5 bg-green-900/30 text-green-200 rounded-lg border border-green-800/50 text-xs font-bold hover:bg-green-900/50 transition-colors"><FolderUp size={14} /> 데이터 복원</button>
                 </div>
-                <input type="file" ref={backupFileInputRef} onChange={() => {}} className="hidden" accept=".json" />
               </div>
             </div>
           )}
