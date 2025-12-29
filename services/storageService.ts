@@ -108,11 +108,11 @@ export const getDefaultSettings = (): AppSettings => ({
   enableIndentation: true,
   editorBackgroundColor: '#09090b', // Default Dark (Zinc-950)
   snippets: DEFAULT_SNIPPETS,
-  aiModel: 'gemini-2.5-flash', // Updated default
+  aiModel: 'gemini-3-flash-preview', // Updated to 3.0 Flash
   
   // Default Assistant Models - Ensure they match available models
-  leftAssistantModel: 'gemini-2.5-flash',
-  rightAssistantModel: 'gemini-2.5-flash',
+  leftAssistantModel: 'gemini-3-flash-preview',
+  rightAssistantModel: 'gemini-3-flash-preview',
 
   // Default Personas
   leftAssistantPersona: {
@@ -288,8 +288,6 @@ export const getLocalSettings = (): AppSettings | null => {
   }
 
   // Model Migration Logic
-  // Updated: Allow new Pro models (2.0 Pro, 2.5 Pro, 3.0 Pro) to persist
-  // CRITICAL: Strictly validate against AVAILABLE_MODELS
   const migrateModel = (modelName: string) => {
     if (!modelName) return defaults.aiModel;
     
@@ -300,22 +298,18 @@ export const getLocalSettings = (): AppSettings | null => {
       return modelName;
     }
     
-    console.warn(`Migrating invalid/old model '${modelName}' to default 'gemini-2.5-flash'`);
-    // Fallback if invalid (e.g., deprecated model)
-    return 'gemini-2.5-flash';
+    console.warn(`Migrating invalid/old model '${modelName}' to default 'gemini-3-flash-preview'`);
+    return 'gemini-3-flash-preview';
   };
 
   parsed.aiModel = migrateModel(parsed.aiModel || defaults.aiModel);
 
   // Migration: If new fields missing, fill with defaults
-  if (!parsed.leftAssistantModel) parsed.leftAssistantModel = defaults.leftAssistantModel;
+  if (!parsed.leftAssistantModel) parsed.leftAssistantModel = migrateModel(defaults.leftAssistantModel);
   
   if (!parsed.rightAssistantModel) {
-     // Legacy migration: If right model missing, try to migrate from old 'assistantModel'
-     // BUT we must validate it.
-     parsed.rightAssistantModel = parsed.assistantModel ? migrateModel(parsed.assistantModel) : defaults.rightAssistantModel;
+     parsed.rightAssistantModel = parsed.assistantModel ? migrateModel(parsed.assistantModel) : migrateModel(defaults.rightAssistantModel);
   } else {
-     // Normal migration: Validate existing right model
      parsed.rightAssistantModel = migrateModel(parsed.rightAssistantModel);
   }
   
