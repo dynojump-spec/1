@@ -34,6 +34,7 @@ const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUpdate })
   // Google Drive State
   const [isDriveLoading, setIsDriveLoading] = useState(false);
   const [driveStatus, setDriveStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  const [lastBackupFile, setLastBackupFile] = useState('');
   
   // Assistant Tab State
   const [assistantTabMode, setAssistantTabMode] = useState<'left' | 'right'>('right');
@@ -83,7 +84,11 @@ const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUpdate })
       };
       
       const content = JSON.stringify(backupData, null, 2);
-      const filename = 'novelcraft-backup.json';
+      
+      // Filename with timestamp
+      const now = new Date();
+      const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}-${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`;
+      const filename = `novelcraft-backup-${timestamp}.json`;
 
       const client = (window as any).google.accounts.oauth2.initTokenClient({
         client_id: settings.driveClientId,
@@ -93,46 +98,63 @@ const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUpdate })
             console.error("Token Error:", tokenResponse.error);
             setDriveStatus('error');
             setIsDriveLoading(false);
-            
-            // Handle specific 403 access_denied
             if (tokenResponse.error === 'access_denied') {
-              alert(
-                "⚠️ 액세스가 거부되었습니다.\n\n" +
-                "해결 방법:\n" +
-                "1. Google Cloud Console의 'OAuth 동의 화면' 메뉴로 이동합니다.\n" +
-                "2. '테스트 사용자(Test users)' 섹션에 본인의 이메일을 추가했는지 확인하세요.\n" +
-                "3. 추가하지 않았다면 본인 이메일을 등록해야만 앱을 사용할 수 있습니다."
-              );
-            } else {
-              alert(`인증 오류가 발생했습니다: ${tokenResponse.error_description || tokenResponse.error}`);
+              alert("⚠️ 액세스가 거부되었습니다. 구글 콘솔의 '테스트 사용자'에 본인 이메일을 추가했는지 확인하세요.");
             }
             return;
           }
           
           const accessToken = tokenResponse.access_token;
-          let fileId = settings.driveFileId;
-          
-          if (!fileId) {
-             const searchRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=name='${filename}' and trashed=false`, {
-               headers: { Authorization: `Bearer ${accessToken}` }
-             });
-             const searchData = await searchRes.json();
-             if (searchData.files && searchData.files.length > 0) fileId = searchData.files[0].id;
+          const folderName = 'NovelCraft_Backups';
+          let folderId = '';
+
+          // 1. Search for dedicated folder
+          const folderSearchRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=name='${folderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`, {
+            headers: { Authorization: `Bearer ${accessToken}` }
+          });
+          const folderSearchData = await folderSearchRes.json();
+
+          if (folderSearchData.files && folderSearchData.files.length > 0) {
+            folderId = folderSearchData.files[0].id;
+          } else {
+            // 2. Create folder if not exists
+            const createFolderRes = await fetch('https://www.googleapis.com/drive/v3/files', {
+              method: 'POST',
+              headers: { 
+                Authorization: `Bearer ${accessToken}`,
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                name: folderName,
+                mimeType: 'application/vnd.google-apps.folder'
+              })
+            });
+            const folderData = await createFolderRes.json();
+            folderId = folderData.id;
           }
 
-          const metadata = { name: filename, mimeType: 'application/json' };
+          // 3. Upload file into the folder
+          const metadata = { 
+            name: filename, 
+            mimeType: 'application/json',
+            parents: [folderId] 
+          };
+          
           const form = new FormData();
           form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
           form.append('file', new Blob([content], { type: 'application/json' }));
 
-          const url = fileId ? `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=multipart` : `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart`;
-          const method = fileId ? 'PATCH' : 'POST';
+          const uploadRes = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', { 
+            method: 'POST', 
+            headers: { Authorization: `Bearer ${accessToken}` }, 
+            body: form 
+          });
 
-          const uploadRes = await fetch(url, { method, headers: { Authorization: `Bearer ${accessToken}` }, body: form });
           if (!uploadRes.ok) throw new Error("Upload failed");
           
           const uploadData = await uploadRes.json();
-          onUpdate({ ...settings, driveFileId: uploadData.id, lastCloudBackup: new Date().toLocaleString() });
+          setLastBackupFile(filename);
+          onUpdate({ ...settings, lastCloudBackup: new Date().toLocaleString() });
           setDriveStatus('success');
           setIsDriveLoading(false);
         },
@@ -142,7 +164,7 @@ const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUpdate })
       console.error(error);
       setDriveStatus('error');
       setIsDriveLoading(false);
-      alert("백업 프로세스 중 치명적인 오류가 발생했습니다. Client ID가 유효한지 확인해주세요.");
+      alert("백업 프로세스 중 오류가 발생했습니다.");
     }
   };
 
@@ -279,7 +301,7 @@ const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUpdate })
                 </select>
               </div>
 
-              {/* Enhanced Drive Sync Section with Troubleshooting */}
+              {/* Enhanced Drive Sync Section */}
               <div className="bg-zinc-800/50 p-4 rounded-lg border border-zinc-800">
                 <label className="block mb-3 text-sm font-bold text-zinc-200 flex items-center gap-2">
                   <Cloud size={16} className="text-blue-400" /> Google Drive 클라우드 백업
@@ -306,14 +328,21 @@ const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUpdate })
                      />
                    </div>
 
-                   <div className="flex items-center justify-between p-3 bg-zinc-950 rounded border border-zinc-800">
-                      <div className="flex flex-col">
-                        <span className="text-xs text-zinc-300 font-bold">마지막 백업</span>
-                        <span className="text-[10px] text-zinc-500">{settings.lastCloudBackup ? settings.lastCloudBackup : '기록 없음'}</span>
+                   <div className="flex flex-col gap-2 p-3 bg-zinc-950 rounded border border-zinc-800">
+                      <div className="flex items-center justify-between">
+                        <div className="flex flex-col">
+                          <span className="text-xs text-zinc-300 font-bold">백업 폴더</span>
+                          <span className="text-[10px] text-blue-500">NovelCraft_Backups/</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                           {driveStatus === 'success' && <div className="flex items-center gap-1 text-[10px] text-green-500 font-bold"><CheckCircle2 size={12} /> 완료</div>}
+                           {driveStatus === 'error' && <div className="flex items-center gap-1 text-[10px] text-red-500 font-bold"><AlertTriangle size={12} /> 실패</div>}
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                         {driveStatus === 'success' && <div className="flex items-center gap-1 text-[10px] text-green-500 font-bold"><CheckCircle2 size={12} /> 성공</div>}
-                         {driveStatus === 'error' && <div className="flex items-center gap-1 text-[10px] text-red-500 font-bold"><AlertTriangle size={12} /> 실패</div>}
+                      <div className="flex flex-col border-t border-zinc-800 pt-2">
+                        <span className="text-[9px] text-zinc-500 uppercase font-bold tracking-tight">최근 백업 파일</span>
+                        <span className="text-[10px] text-zinc-300 truncate">{lastBackupFile || (settings.lastCloudBackup ? '기록 있음' : '없음')}</span>
+                        {settings.lastCloudBackup && <span className="text-[9px] text-zinc-600">{settings.lastCloudBackup}</span>}
                       </div>
                    </div>
                    
