@@ -2,9 +2,9 @@
 export interface NovelDocument {
   id: string;
   title: string;
-  content: string; // HTML content
+  content: string;
   lastModified: number;
-  isDeleted?: boolean; // New: Soft delete status
+  isDeleted?: boolean;
 }
 
 export enum FontType {
@@ -20,23 +20,23 @@ export enum SnippetType {
 
 export interface Snippet {
   id: string;
-  trigger: string; // e.g., "Ctrl+1", "Alt+Shift+A"
-  text: string; // Text content OR Color Hex Code OR AI Revision Mode ID
+  trigger: string;
+  text: string;
   type: SnippetType;
 }
 
 export interface KnowledgeFile {
   id: string;
   name: string;
-  content: string; // Text content of the file
+  content: string;
   size: number;
 }
 
 export interface AssistantPersona {
   name: string;
-  instruction: string; // System Instructions (You are a...)
-  knowledge: string; // Background knowledge (Text)
-  files?: KnowledgeFile[]; // Attached Knowledge Files
+  instruction: string;
+  knowledge: string;
+  files?: KnowledgeFile[];
 }
 
 export interface AppSettings {
@@ -45,31 +45,23 @@ export interface AppSettings {
   fontType: FontType;
   alignment: 'justify' | 'left';
   enableIndentation?: boolean;
-  
-  // Visual Settings
-  editorBackgroundColor: string; // New: Editor Background Color
-
+  editorBackgroundColor: string;
   snippets: Snippet[];
-  aiModel: string; // Editor Model
-  
-  // Dual Assistant Settings
+  aiModel: string;
   leftAssistantModel: string;
   rightAssistantModel: string;
   leftAssistantPersona: AssistantPersona;
   rightAssistantPersona: AssistantPersona;
-
   apiKey?: string;
   soundVolume: number;
+  enableSaveAsDialog?: boolean;
   
-  // Export Settings
-  enableSaveAsDialog?: boolean; // New: Toggle for File System Access API
-  
-  // Deprecated but kept for type safety during migration if needed
-  assistantModel?: string; 
+  // Google Drive Cloud Sync
+  driveFileId?: string;
+  lastCloudBackup?: string;
+  driveClientId?: string; // Optional: User provided client ID
 }
 
-// Define available models for the UI
-// Updated: Removed invalid 'native-audio-dialog' model causing 404s
 export const AVAILABLE_MODELS = [
   { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash (권장/빠름)' },
   { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro (고성능/추론)' },
@@ -83,8 +75,8 @@ export enum AIRevisionMode {
   EMOTIONAL = 'emotional',
   POLISH = 'polish',
   HANJA = 'hanja',
-  COMPACT = 'compact', // New: Brick wall fixer
-  SCENERY = 'scenery', // New: Background description
+  COMPACT = 'compact',
+  SCENERY = 'scenery',
 }
 
 export interface DiffToken {
@@ -95,7 +87,7 @@ export interface DiffToken {
 export interface SelectionRangeData {
   startOffset: number;
   endOffset: number;
-  containerHtml: string; // The full HTML of the paragraph(s) or container
+  containerHtml: string;
 }
 
 export interface SearchSource {
@@ -108,7 +100,7 @@ export interface Attachment {
   name: string;
   type: 'image' | 'text' | 'file';
   mimeType: string;
-  data: string; // Base64 string for images, or raw text for text files
+  data: string;
 }
 
 export interface ChatMessage {
@@ -116,8 +108,8 @@ export interface ChatMessage {
   role: 'user' | 'model';
   text: string;
   isLoading?: boolean;
-  sources?: SearchSource[]; // Added for Search Grounding
-  attachments?: Attachment[]; // Added for File Attachments
+  sources?: SearchSource[];
+  attachments?: Attachment[];
 }
 
 export interface ChatSession {

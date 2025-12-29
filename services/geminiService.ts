@@ -2,19 +2,29 @@
 import { GoogleGenAI, GenerateContentResponse, Part, HarmCategory, HarmBlockThreshold } from "@google/genai";
 import { AIRevisionMode, ChatMessage, SearchSource, AssistantPersona, KnowledgeFile } from '../types';
 
-const SYSTEM_INSTRUCTION = `
-You are an expert Korean web novel editor (웹소설 PD/Editor).
-Your task is to revise the provided text based on specific instructions.
+// --- SYSTEM INSTRUCTIONS ---
 
-RULES:
-1. Output ONLY the revised text. Do not include any explanations, markdown formatting (like \`\`\`), or conversational filler.
-2. LANGUAGE: The output MUST be in natural Korean (Hangul), appropriate for web novels.
-3. AUTO-COMPLETION: If the input text contains incomplete sentences or fragments (e.g., ends abruptly), you MUST logically and naturally complete the sentence based on the context BEFORE applying the specific revision style.
-4. FORMATTING IS CRITICAL - STRICT ADHERENCE REQUIRED: 
-   - **PRESERVE LINE BREAKS EXACTLY**: You must maintain the original line breaks (Enter) and paragraph separations.
-   - **DO NOT MERGE PARAGRAPHS**: Keep the exact same number of text blocks/paragraphs as the input.
-   - **DO NOT ADD EXTRA BLANK LINES**: Maintain the original vertical spacing.
-   - **DO NOT ADD NEWLINES INSIDE A SENTENCE**: Keep sentences within their original paragraphs.
+// 1. REVISION INSTRUCTION (For Editor: Fast, Strict, Segment-Only)
+const REVISION_SYSTEM_INSTRUCTION = `
+You are a precise text processing engine for a Korean web novel editor.
+Your ONLY goal is to rewrite the input text according to the user's specific mode.
+
+CRITICAL RULES:
+1. **OUTPUT ONLY THE RESULT**: Do not add "Here is the revised text", "I modified it", or markdown code blocks like \`\`\`. Just output the text.
+2. **PRESERVE FORMATTING**: 
+   - Keep line breaks (Enter) exactly as they are.
+   - Do not merge paragraphs. 
+   - Do not add extra blank lines.
+3. **CONTEXT**: The input is a fragment of a story. If a sentence is cut off, complete it logically before revising.
+4. **LANGUAGE**: Natural, high-quality Korean (Web Novel style).
+`;
+
+// 2. CHAT INSTRUCTION (For Assistant: Helpful, Conversational, Context-Aware)
+const CHAT_SYSTEM_INSTRUCTION_BASE = `
+You are an expert Korean web novel editor (웹소설 PD/Editor).
+Your task is to assist the writer with plotting, settings, synonyms, and feedback.
+You communicate in natural Korean.
+IMPORTANT: Use **bold text** (**text**) to emphasize key terms, headers, names, or important conclusions to improve readability.
 `;
 
 // Safety Settings: Disable all filters for creative writing context
@@ -26,45 +36,26 @@ const SAFETY_SETTINGS = [
 ];
 
 const getPromptForMode = (mode: AIRevisionMode, text: string): string => {
-  const formatNote = "매우 중요: 1. 원문의 줄바꿈(엔터) 위치와 문단 구분을 **절대 변경하지 마세요**. 문단을 합치거나 나누지 말고 원형을 유지하세요. 2. 입력된 문장이 미완성(끊김) 상태라면, 문맥에 맞게 자연스럽게 문장을 완성시킨 후 수정하세요.";
-  
+  // Simplified prompts for efficiency
   switch (mode) {
     case AIRevisionMode.GRAMMAR:
-      return `다음 텍스트의 맞춤법, 띄어쓰기, 오탈자를 교정하세요. 문체나 톤은 변경하지 말고 오류만 수정하세요. ${formatNote}\n\n텍스트:\n${text}`;
+      return `[MODE: Grammar Fix]\nFix spelling/spacing errors only. Keep tone.\n\nTEXT:\n${text}`;
     case AIRevisionMode.ACTION:
-      return `다음 텍스트의 전투 및 액션 장면을 더 역동적이고 박진감 넘치게 묘사하세요. 타격감, 속도감, 움직임을 생생하게 표현하세요. (반드시 한국어로 작성) ${formatNote}\n\n텍스트:\n${text}`;
+      return `[MODE: Action Upgrade]\nMake combat/action scenes dynamic and impactful.\n\nTEXT:\n${text}`;
     case AIRevisionMode.DIALOGUE:
-      return `다음 텍스트의 대사(대화문)를 캐릭터의 성격이 잘 드러나고 입말(구어체)이 자연스럽게 들리도록 수정하세요. 티키타카와 현장감을 살리세요. (반드시 한국어로 작성) ${formatNote}\n\n텍스트:\n${text}`;
+      return `[MODE: Dialogue Polish]\nMake dialogue sound natural (spoken Korean) and reveal character.\n\nTEXT:\n${text}`;
     case AIRevisionMode.EMOTIONAL:
-      return `다음 텍스트의 감정 묘사를 더 깊이 있고 호소력 짙게 수정하세요. 인물의 내면 심리와 분위기를 감각적으로 표현하세요. ${formatNote}\n\n텍스트:\n${text}`;
+      return `[MODE: Emotional Deepening]\nEnhance emotional depth and atmosphere.\n\nTEXT:\n${text}`;
     case AIRevisionMode.POLISH:
-      return `다음 텍스트를 **세련되고 기품 있는 문체**로 윤문(다듬기)하세요.
-      - **핵심**: 불필요한 수식과 군더더기를 과감히 제거하여 문장을 **압축**하세요.
-      - **분량**: 결과물의 분량이 원문보다 **늘어나지 않게** 하세요. (원문과 비슷하거나 더 짧게 유지)
-      - 단어 선택을 고급스럽게 하되, 호흡을 정돈하여 간결하고 임팩트 있는 문장을 만드세요.
-      ${formatNote}\n\n텍스트:\n${text}`;
+      return `[MODE: Polish & Compress]\nRemove redundancy. Make sentences concise and elegant. Do not increase length.\n\nTEXT:\n${text}`;
     case AIRevisionMode.HANJA:
-      return `Identify Sino-Korean words (Hanja-eo) in the following text and append their Chinese characters in parentheses.
-      Format: Word -> Word(Hanja)
-      Example: 화룡 -> 화룡(火龍), 천하 -> 천하(天下)
-      Rules:
-      - Only convert meaningful nouns, idioms, or compounds where Hanja clarifies the meaning or adds flavor (common in martial arts/fantasy novels).
-      - Do NOT convert native Korean words.
-      - Keep the rest of the text exactly as is in Korean.
-      ${formatNote}\n\nText:\n${text}`;
+      return `[MODE: Hanja Append]\nAppend (Hanja) to key nouns/idioms only (e.g., 화룡(火龍)). Keep native words as is.\n\nTEXT:\n${text}`;
     case AIRevisionMode.COMPACT:
-      return `다음 텍스트(일명 벽돌체)의 맥락과 의도를 파악하여, 가독성이 좋고 직관적인 문장으로 완전히 재구성하세요. 
-      - 불필요한 수식어를 줄이고 문장을 간결하게 만들어, 기존 5~6줄 분량이라면 4~5줄 내외로 줄이되 핵심 내용은 유지하세요.
-      - 꽉 막힌 문장을 시원하게 뚫어주고 읽기 편하게 만드세요.
-      ${formatNote}\n\n텍스트:\n${text}`;
+      return `[MODE: De-clutter]\nBreak up "wall of text". Simplify sentences for readability. Keep core meaning.\n\nTEXT:\n${text}`;
     case AIRevisionMode.SCENERY:
-      return `다음 텍스트(지시문 또는 키워드)를 바탕으로 소설의 배경 묘사를 작성하세요. 
-      - 분량은 공백 포함 약 150~300자 내외로 작성하세요.
-      - 시각, 청각, 후각 등 감각적인 심상을 활용하여 분위기를 생생하게 살리세요.
-      - 문맥에 자연스럽게 녹아들도록 작성하세요.
-      ${formatNote}\n\n텍스트:\n${text}`;
+      return `[MODE: Scenery Write]\nWrite a background description (150-300 chars) based on this keyword/text.\n\nTEXT:\n${text}`;
     default:
-      return `다음 텍스트를 수정하세요. ${formatNote}\n\n텍스트:\n${text}`;
+      return `[MODE: General Revision]\nRevise this text naturally.\n\nTEXT:\n${text}`;
   }
 };
 
@@ -203,6 +194,7 @@ async function retryWithBackoff<T>(fn: () => Promise<T>, retries = 5, delay = 20
   }
 }
 
+// --- EDITOR REVISION FUNCTION (OPTIMIZED SEGMENT-ONLY) ---
 export const generateRevision = async (
   text: string, 
   mode: AIRevisionMode,
@@ -220,9 +212,12 @@ export const generateRevision = async (
         model: targetModel,
         contents: getPromptForMode(mode, text),
         config: {
-          systemInstruction: SYSTEM_INSTRUCTION,
-          temperature: 0.7, 
-          safetySettings: SAFETY_SETTINGS, 
+          // Use Strict Revision Instruction
+          systemInstruction: REVISION_SYSTEM_INSTRUCTION,
+          temperature: 0.6, // Slightly lower for precision
+          safetySettings: SAFETY_SETTINGS,
+          // IMPORTANT: Do NOT include tools like googleSearch for revisions. 
+          // This ensures "Smart Extraction"-like efficiency (only processing text).
         }
       });
       return res;
@@ -232,6 +227,7 @@ export const generateRevision = async (
   try {
     const response = await performGeneration(modelName);
     let result = response.text?.trim() || text;
+    // Clean up any Markdown code blocks if the model hallucinates them
     result = result.replace(/^```(?:html|text)?\s*/i, '').replace(/\s*```$/, '').trim();
     return result; 
 
@@ -246,85 +242,7 @@ interface ChatResponse {
   sources?: SearchSource[];
 }
 
-// --- SMART RETRIEVAL (RAG) HELPERS ---
-
-// Helper: Split text into manageable chunks
-const chunkText = (text: string, chunkSize: number = 1000, overlap: number = 200): string[] => {
-  const chunks: string[] = [];
-  let i = 0;
-  while (i < text.length) {
-    chunks.push(text.substring(i, Math.min(text.length, i + chunkSize)));
-    i += (chunkSize - overlap);
-  }
-  return chunks;
-};
-
-// Helper: Retrieve relevant chunks based on keyword matching
-const retrieveRelevantContext = (query: string, files: KnowledgeFile[]): string => {
-  if (!files || files.length === 0) return "";
-  
-  // Normalize query and extract keywords
-  const queryTerms = query.toLowerCase().split(/\s+/).filter(w => w.length > 1); // Ignore single chars
-  
-  // If query is empty or too short, return introduction of files
-  if (queryTerms.length === 0) {
-      let fallback = "";
-      for (const file of files) {
-          fallback += `\n--- Start of File: ${file.name} ---\n${file.content.substring(0, 1500)}...\n`;
-      }
-      return fallback;
-  }
-
-  const scoredChunks: { text: string; score: number; file: string }[] = [];
-
-  for (const file of files) {
-      // Chunk the file
-      const rawChunks = chunkText(file.content, 1500, 300);
-      
-      for (const chunk of rawChunks) {
-          let score = 0;
-          const lowerChunk = chunk.toLowerCase();
-          
-          for (const term of queryTerms) {
-              // Simple frequency count (escaped for regex)
-              const regex = new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
-              const count = (lowerChunk.match(regex) || []).length;
-              score += count;
-          }
-          
-          if (score > 0) {
-              scoredChunks.push({ text: chunk, score, file: file.name });
-          }
-      }
-  }
-
-  // Sort by score descending
-  scoredChunks.sort((a, b) => b.score - a.score);
-
-  // Take top N chunks until we hit a safe character limit
-  // Limit to ~20k chars to leave room for history and generation
-  const MAX_CONTEXT_CHARS = 20000; 
-  let currentChars = 0;
-  let result = "";
-
-  for (const item of scoredChunks) {
-      if (currentChars + item.text.length > MAX_CONTEXT_CHARS) break;
-      result += `\n--- Relevant Excerpt from ${item.file} (Matches: ${item.score}) ---\n${item.text}\n`;
-      currentChars += item.text.length;
-  }
-
-  // If no matches found, fallback to introduction
-  if (result === "") {
-      for (const file of files) {
-          result += `\n--- Start of File (No specific match found): ${file.name} ---\n${file.content.substring(0, 2000)}...\n`;
-      }
-  }
-
-  return result;
-};
-
-
-// General Chat Function for the Assistant Panel
+// --- CHAT ASSISTANT FUNCTION (FULL CONTEXT AWARE) ---
 export const chatWithAssistant = async (
   history: ChatMessage[],
   newMessage: string,
@@ -336,11 +254,8 @@ export const chatWithAssistant = async (
   const key = (apiKey || process.env.API_KEY || '').trim();
   if (!key) throw new Error("API Key is missing. Please check your settings.");
 
-  // DYNAMIC CONTEXT PRUNING (MAINTAINED)
-  // Even with RAG, we prune history to prevent overload.
+  // DYNAMIC CONTEXT PRUNING
   const hasFiles = (persona?.files?.length || 0) > 0;
-  
-  // If we have files (RAG active), we keep history shorter to prioritize retrieved content.
   const MAX_HISTORY_CHARS = hasFiles ? 5000 : 20000; 
   
   let currentChars = 0;
@@ -392,7 +307,8 @@ export const chatWithAssistant = async (
   newParts.push({ text: newMessage });
   contents.push({ role: 'user', parts: newParts });
 
-  let baseInstruction = "You are a helpful assistant for a web novel writer (Google Gemini). You can search the web for real-time information if needed. Provide concise, creative, and accurate answers regarding plotting, character names, settings, synonyms, and general knowledge. You communicate in Korean. When files are attached, analyze them to assist the user. IMPORTANT: Use **bold text** (**text**) to emphasize key terms, headers, names, or important conclusions to improve readability.";
+  // Build System Instruction for Chat
+  let finalInstruction = CHAT_SYSTEM_INSTRUCTION_BASE;
   
   if (persona) {
       let personaInstruction = "";
@@ -403,19 +319,17 @@ export const chatWithAssistant = async (
           personaInstruction += `\n\n[KNOWLEDGE BASE]\n${persona.knowledge}`;
       }
       
-      // SMART RETRIEVAL STRATEGY (RESTORED)
+      // FULL CONTENT STRATEGY (For Assistant)
       if (persona.files && persona.files.length > 0) {
-         personaInstruction += `\n\n[REFERENCE MATERIALS (RETRIEVED EXCERPTS)]`;
+         personaInstruction += `\n\n[REFERENCE MATERIALS]`;
          
-         // Use Smart Retrieval instead of full dump
-         const retrievedContext = retrieveRelevantContext(newMessage, persona.files);
-         personaInstruction += retrievedContext;
-         
-         personaInstruction += `\n[NOTE] The above excerpts are retrieved from the attached files based on the user's query. If the answer is not in the excerpts, use your general knowledge but mention that it might not be in the file.`;
+         for (const file of persona.files) {
+             personaInstruction += `\n--- Start of File: ${file.name} ---\n${file.content}\n--- End of File: ${file.name} ---\n`;
+         }
       }
       
       if (personaInstruction) {
-          baseInstruction = `${baseInstruction}${personaInstruction}`;
+          finalInstruction = `${finalInstruction}${personaInstruction}`;
       }
   }
 
@@ -426,8 +340,8 @@ export const chatWithAssistant = async (
       model: targetModel,
       contents: contents,
       config: {
-        tools: [{ googleSearch: {} }],
-        systemInstruction: baseInstruction,
+        tools: [{ googleSearch: {} }], // Chat keeps Search
+        systemInstruction: finalInstruction,
         safetySettings: SAFETY_SETTINGS, 
       }
     }), 5, 5000); 

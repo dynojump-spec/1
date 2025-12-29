@@ -9,6 +9,9 @@
     <link rel="manifest" href="/manifest.json">
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700&family=Noto+Serif+KR:wght@400;700&display=swap" rel="stylesheet">
+    <!-- Google API Client Libraries -->
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script src="https://apis.google.com/js/api.js" async defer></script>
     <script>
       tailwind.config = {
         darkMode: 'class',
@@ -33,9 +36,8 @@
       body {
         background-color: #09090b;
         color: #f4f4f5;
-        overscroll-behavior: none; /* Prevent pull-to-refresh on mobile */
+        overscroll-behavior: none;
       }
-      /* Custom Scrollbar */
       ::-webkit-scrollbar {
         width: 8px;
       }
@@ -49,31 +51,26 @@
       ::-webkit-scrollbar-thumb:hover {
         background: #3f3f46; 
       }
-      
-      /* Editor specific styles */
       [contenteditable]:empty:before {
         content: attr(placeholder);
         color: #52525b;
         pointer-events: none;
-        display: block; /* For Firefox */
+        display: block;
       }
-      
-      /* Interactive Diff Styles */
       .diff-interactive {
         cursor: pointer;
         border-radius: 2px;
         transition: color 0.2s;
         padding: 0 1px;
-        font-weight: bold; /* Make changes stand out slightly more without background */
+        font-weight: bold;
       }
       .diff-interactive[data-state="modified"] {
-        color: #60a5fa; /* Blue-400 */
-        background-color: transparent; /* No background */
+        color: #60a5fa;
+        background-color: transparent;
       }
       .diff-interactive[data-state="original"] {
-        color: #f87171; /* Red-400 */
-        background-color: transparent; /* No background */
-        /* Strikethrough removed as requested */
+        color: #f87171;
+        background-color: transparent;
         text-decoration: none;
       }
     </style>

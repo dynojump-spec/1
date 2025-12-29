@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Plus, Trash2, Keyboard, Command, Type, Palette, Cpu, Download, Upload, AlignJustify, AlignLeft, Wand2, Key, Eye, EyeOff, MessageSquare, Volume2, Indent, Bot, PanelLeft, PanelRight, BookOpen, UserCircle, PenTool, FileUp, FileText, RotateCcw, ExternalLink, Database, Save, FolderUp, Folder, PaintBucket, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { X, Plus, Trash2, Keyboard, Command, Type, Palette, Cpu, Download, Upload, AlignJustify, AlignLeft, Wand2, Key, Eye, EyeOff, MessageSquare, Volume2, Indent, Bot, PanelLeft, PanelRight, BookOpen, UserCircle, PenTool, FileUp, FileText, RotateCcw, ExternalLink, Database, Save, FolderUp, Folder, PaintBucket, AlertTriangle, CheckCircle2, Cloud, CloudOff, Loader2 } from 'lucide-react';
 import { AppSettings, FontType, Snippet, SnippetType, AVAILABLE_MODELS, AIRevisionMode, KnowledgeFile } from '../types';
 import { getDefaultSettings } from '../services/storageService';
 import { v4 as uuidv4 } from 'uuid';
@@ -31,14 +31,16 @@ const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUpdate })
   const [isRecording, setIsRecording] = useState(false);
   const [showApiKey, setShowApiKey] = useState(false);
   
-  // Assistant Tab State
+  // Google Drive State
+  const [isDriveLoading, setIsDriveLoading] = useState(false);
+  const [driveStatus, setDriveStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  
   const [assistantTabMode, setAssistantTabMode] = useState<'left' | 'right'>('right');
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const knowledgeFileInputRef = useRef<HTMLInputElement>(null);
   const backupFileInputRef = useRef<HTMLInputElement>(null);
 
-  // Reset inputs when opening/closing
   useEffect(() => {
     if (!isOpen) {
       setIsRecording(false);
@@ -46,238 +48,19 @@ const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUpdate })
       setNewSnippetType(SnippetType.TEXT);
       setNewSnippetValue('');
       setShowApiKey(false);
+      setDriveStatus('idle');
     }
   }, [isOpen]);
 
   if (!isOpen) return null;
 
-  const handleKeyDownCapture = (e: React.KeyboardEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-
-    // Ignore modifier-only presses
-    if (['Control', 'Alt', 'Shift', 'Meta'].includes(e.key)) return;
-
-    const modifiers = [];
-    if (e.ctrlKey) modifiers.push('Ctrl');
-    if (e.altKey) modifiers.push('Alt');
-    if (e.shiftKey) modifiers.push('Shift');
-    if (e.metaKey) modifiers.push('Cmd');
-
-    // Normalize key logic
-    let key = e.key.toUpperCase();
-
-    // Standardize Digit keys (e.g., '!' -> '1', '¡' -> '1') to ensure Alt+Num works consistently
-    if (e.code.startsWith('Digit')) {
-      key = e.code.replace('Digit', '');
-    }
-
-    const trigger = [...modifiers, key].join('+');
+  // --- Google Drive Backup Logic ---
+  const handleGoogleDriveBackup = async () => {
+    setIsDriveLoading(true);
+    setDriveStatus('loading');
     
-    setNewTrigger(trigger);
-    setIsRecording(false);
-  };
-
-  const addSnippet = () => {
-    if (!newTrigger || !newSnippetValue) return;
-    
-    const newSnippet: Snippet = {
-      id: uuidv4(),
-      trigger: newTrigger,
-      text: newSnippetValue,
-      type: newSnippetType
-    };
-
-    onUpdate({
-      ...settings,
-      snippets: [...(settings.snippets || []), newSnippet]
-    });
-
-    setNewTrigger('');
-    if (newSnippetType === SnippetType.COLOR) setNewSnippetValue('#ffffff');
-    else if (newSnippetType === SnippetType.AI_COMMAND) setNewSnippetValue(AIRevisionMode.GRAMMAR);
-    else setNewSnippetValue('');
-  };
-
-  const removeSnippet = (id: string) => {
-    onUpdate({
-      ...settings,
-      snippets: settings.snippets.filter(s => s.id !== id)
-    });
-  };
-
-  const insertCursorMarker = () => {
-    setNewSnippetValue(prev => prev + '{|}');
-  };
-
-  const handleExportSnippets = () => {
-    const dataStr = JSON.stringify(settings.snippets || [], null, 2);
-    const blob = new Blob([dataStr], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "novelcraft-snippets.json";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
-  const handleImportClick = () => {
-    fileInputRef.current?.click();
-  };
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const content = event.target?.result as string;
-        const parsed = JSON.parse(content);
-
-        if (Array.isArray(parsed)) {
-          const validSnippets: Snippet[] = parsed
-            .filter((item: any) => item && typeof item === 'object' && item.trigger)
-            .map((item: any) => ({
-              id: item.id || uuidv4(),
-              trigger: item.trigger,
-              text: item.text || '',
-              type: Object.values(SnippetType).includes(item.type) ? item.type : SnippetType.TEXT
-            }));
-          
-          if (validSnippets.length > 0) {
-            const existingSnippets = settings.snippets || [];
-            
-            if (existingSnippets.length === 0) {
-              onUpdate({ ...settings, snippets: validSnippets });
-              alert(`${validSnippets.length}개의 단축키를 불러왔습니다.`);
-            } else {
-              if (window.confirm(`불러온 ${validSnippets.length}개의 단축키를 기존 목록에 '추가(Merge)' 하시겠습니까?\n\n[확인]: 기존 목록 뒤에 추가합니다. (중복 키는 덮어씌움)\n[취소]: 다음 단계로 이동 (전체 교체 여부 확인)`)) {
-                 const snippetMap = new Map();
-                 existingSnippets.forEach(s => snippetMap.set(s.trigger, s));
-                 validSnippets.forEach(s => snippetMap.set(s.trigger, s));
-                 
-                 const mergedSnippets = Array.from(snippetMap.values());
-                 onUpdate({ ...settings, snippets: mergedSnippets });
-                 alert("성공적으로 추가(병합)되었습니다.");
-              } else {
-                if (window.confirm(`그렇다면 기존 목록을 모두 '삭제'하고 덮어쓰시겠습니까?\n\n[확인]: 기존 목록 삭제 후 덮어쓰기\n[취소]: 작업 취소`)) {
-                  onUpdate({ ...settings, snippets: validSnippets });
-                  alert("단축키 목록이 교체되었습니다.");
-                }
-              }
-            }
-          } else {
-            alert("파일에서 유효한 단축키 정보를 찾을 수 없습니다.");
-          }
-        } else {
-          alert("올바르지 않은 JSON 파일입니다.");
-        }
-      } catch (err) {
-        console.error("Import Error:", err);
-        alert("파일을 읽는 중 오류가 발생했습니다.");
-      }
-    };
-    reader.readAsText(file);
-    if (fileInputRef.current) fileInputRef.current.value = '';
-  };
-
-  // Helper to get current assistant config based on tab
-  const getAssistantConfig = () => {
-    return assistantTabMode === 'left' ? {
-      model: settings.leftAssistantModel || AVAILABLE_MODELS[1].id,
-      persona: settings.leftAssistantPersona
-    } : {
-      model: settings.rightAssistantModel || AVAILABLE_MODELS[1].id,
-      persona: settings.rightAssistantPersona
-    };
-  };
-
-  const updateAssistantConfig = (field: string, value: any) => {
-    if (assistantTabMode === 'left') {
-      if (field === 'model') {
-        onUpdate({ ...settings, leftAssistantModel: value });
-      } else {
-        onUpdate({ 
-          ...settings, 
-          leftAssistantPersona: { ...settings.leftAssistantPersona, [field]: value } 
-        });
-      }
-    } else {
-      if (field === 'model') {
-        onUpdate({ ...settings, rightAssistantModel: value });
-      } else {
-        onUpdate({ 
-          ...settings, 
-          rightAssistantPersona: { ...settings.rightAssistantPersona, [field]: value } 
-        });
-      }
-    }
-  };
-
-  const handleKnowledgeFileAdd = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-
-    // Helper to read file
-    const readFile = (file: File): Promise<KnowledgeFile> => {
-        return new Promise((resolve) => {
-            const reader = new FileReader();
-            reader.onload = (event) => {
-                const content = event.target?.result as string;
-                if (content) {
-                    resolve({
-                        id: uuidv4(),
-                        name: file.name,
-                        content: content,
-                        size: file.size
-                    });
-                } else {
-                    resolve({ id: uuidv4(), name: file.name, content: '', size: 0 });
-                }
-            };
-            reader.onerror = () => {
-                console.error(`Failed to read file ${file.name}`);
-                resolve({ id: uuidv4(), name: file.name, content: '', size: 0 });
-            };
-            reader.readAsText(file);
-        });
-    };
-
-    // Read all files
-    const promises = Array.from(files).map(file => readFile(file as File));
-    const results = await Promise.all(promises);
-    
-    // Filter out valid results
-    const validFiles = results.filter(f => f.content && f.size > 0);
-
-    if (validFiles.length > 0) {
-        const currentFiles = getAssistantConfig().persona?.files || [];
-        updateAssistantConfig('files', [...currentFiles, ...validFiles]);
-    }
-    
-    // Reset input
-    if (knowledgeFileInputRef.current) knowledgeFileInputRef.current.value = '';
-  };
-
-  const removeKnowledgeFile = (id: string) => {
-      if (!window.confirm("이 참조 파일을 삭제하시겠습니까?")) return;
-      const currentFiles = getAssistantConfig().persona?.files || [];
-      updateAssistantConfig('files', currentFiles.filter(f => f.id !== id));
-  };
-
-  const removeAllKnowledgeFiles = () => {
-      const currentFiles = getAssistantConfig().persona?.files || [];
-      if (currentFiles.length === 0) return;
-      if (window.confirm("모든 참조 파일을 목록에서 제거하시겠습니까?")) {
-          updateAssistantConfig('files', []);
-      }
-  };
-
-  // --- Backup & Restore Logic ---
-  const handleFullBackup = () => {
     try {
+      // 1. Prepare Backup Content
       const docs = localStorage.getItem('novelcraft_docs');
       const savedSettings = localStorage.getItem('novelcraft_settings');
       const chatSessions = localStorage.getItem('novelcraft_chat_sessions');
@@ -294,85 +77,245 @@ const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUpdate })
         }
       };
       
-      const dataStr = JSON.stringify(backupData, null, 2);
-      const blob = new Blob([dataStr], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      const date = new Date().toISOString().slice(0, 10);
-      link.href = url;
-      link.download = `novelcraft-backup-${date}.json`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      const content = JSON.stringify(backupData, null, 2);
+      const filename = 'novelcraft-backup.json';
+
+      // 2. Google OAuth2 Token Request
+      // We use the Identity Service Token Client
+      const client = (window as any).google.accounts.oauth2.initTokenClient({
+        client_id: settings.driveClientId || '582490518744-84d4l6l6vj6j7m8n8m8m8m8m8m8m8m.apps.googleusercontent.com', // Placeholder if not provided
+        scope: 'https://www.googleapis.com/auth/drive.file',
+        callback: async (tokenResponse: any) => {
+          if (tokenResponse.error) {
+            throw new Error(tokenResponse.error);
+          }
+          
+          const accessToken = tokenResponse.access_token;
+          
+          // 3. Check for existing file
+          let fileId = settings.driveFileId;
+          
+          if (!fileId) {
+             const searchRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=name='${filename}' and trashed=false`, {
+               headers: { Authorization: `Bearer ${accessToken}` }
+             });
+             const searchData = await searchRes.json();
+             if (searchData.files && searchData.files.length > 0) {
+               fileId = searchData.files[0].id;
+             }
+          }
+
+          // 4. Upload/Update
+          const metadata = {
+            name: filename,
+            mimeType: 'application/json',
+          };
+          
+          const form = new FormData();
+          form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+          form.append('file', new Blob([content], { type: 'application/json' }));
+
+          const url = fileId 
+            ? `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=multipart`
+            : `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart`;
+          
+          const method = fileId ? 'PATCH' : 'POST';
+
+          const uploadRes = await fetch(url, {
+            method: method,
+            headers: { Authorization: `Bearer ${accessToken}` },
+            body: form
+          });
+
+          if (!uploadRes.ok) throw new Error("Upload failed");
+          
+          const uploadData = await uploadRes.json();
+          
+          // 5. Update settings with File ID and Timestamp
+          onUpdate({
+            ...settings,
+            driveFileId: uploadData.id,
+            lastCloudBackup: new Date().toLocaleString()
+          });
+          
+          setDriveStatus('success');
+          setIsDriveLoading(false);
+        },
+      });
+
+      client.requestAccessToken();
+
     } catch (error) {
-      console.error("Backup failed:", error);
-      alert("백업 파일 생성 중 오류가 발생했습니다.");
+      console.error("Drive backup failed:", error);
+      setDriveStatus('error');
+      setIsDriveLoading(false);
+      alert("구글 드라이브 백업 중 오류가 발생했습니다. 권한 설정을 확인해주세요.");
     }
   };
 
-  const handleFullRestore = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleKeyDownCapture = (e: React.KeyboardEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (['Control', 'Alt', 'Shift', 'Meta'].includes(e.key)) return;
+    const modifiers = [];
+    if (e.ctrlKey) modifiers.push('Ctrl');
+    if (e.altKey) modifiers.push('Alt');
+    if (e.shiftKey) modifiers.push('Shift');
+    if (e.metaKey) modifiers.push('Cmd');
+    let key = e.key.toUpperCase();
+    if (e.code.startsWith('Digit')) key = e.code.replace('Digit', '');
+    const trigger = [...modifiers, key].join('+');
+    setNewTrigger(trigger);
+    setIsRecording(false);
+  };
+
+  const addSnippet = () => {
+    if (!newTrigger || !newSnippetValue) return;
+    const newSnippet: Snippet = { id: uuidv4(), trigger: newTrigger, text: newSnippetValue, type: newSnippetType };
+    onUpdate({ ...settings, snippets: [...(settings.snippets || []), newSnippet] });
+    setNewTrigger('');
+    if (newSnippetType === SnippetType.COLOR) setNewSnippetValue('#ffffff');
+    else if (newSnippetType === SnippetType.AI_COMMAND) setNewSnippetValue(AIRevisionMode.GRAMMAR);
+    else setNewSnippetValue('');
+  };
+
+  const removeSnippet = (id: string) => {
+    onUpdate({ ...settings, snippets: settings.snippets.filter(s => s.id !== id) });
+  };
+
+  const insertCursorMarker = () => { setNewSnippetValue(prev => prev + '{|}'); };
+
+  const handleExportSnippets = () => {
+    const dataStr = JSON.stringify(settings.snippets || [], null, 2);
+    const blob = new Blob([dataStr], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "novelcraft-snippets.json";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleImportClick = () => { fileInputRef.current?.click(); };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
-    if (!window.confirm("경고: 데이터를 복원하면 현재 브라우저에 저장된 모든 소설과 설정이 덮어씌워집니다.\n계속하시겠습니까?")) {
-      if (backupFileInputRef.current) backupFileInputRef.current.value = '';
-      return;
-    }
-
     const reader = new FileReader();
     reader.onload = (event) => {
       try {
         const content = event.target?.result as string;
         const parsed = JSON.parse(content);
-        
-        if (parsed.version && parsed.data) {
-          if (parsed.data.docs) localStorage.setItem('novelcraft_docs', JSON.stringify(parsed.data.docs));
-          if (parsed.data.settings) localStorage.setItem('novelcraft_settings', JSON.stringify(parsed.data.settings));
-          if (parsed.data.chatSessions) localStorage.setItem('novelcraft_chat_sessions', JSON.stringify(parsed.data.chatSessions));
-          if (parsed.data.chatSessionsLeft) localStorage.setItem('novelcraft_chat_sessions_left', JSON.stringify(parsed.data.chatSessionsLeft));
-          
-          alert("데이터 복원이 완료되었습니다.\n앱을 새로고침합니다.");
-          window.location.reload();
-        } else {
-          alert("올바르지 않은 백업 파일 형식입니다.");
+        if (Array.isArray(parsed)) {
+          const validSnippets: Snippet[] = parsed
+            .filter((item: any) => item && typeof item === 'object' && item.trigger)
+            .map((item: any) => ({
+              id: item.id || uuidv4(),
+              trigger: item.trigger,
+              text: item.text || '',
+              type: Object.values(SnippetType).includes(item.type) ? item.type : SnippetType.TEXT
+            }));
+          if (validSnippets.length > 0) {
+            const existingSnippets = settings.snippets || [];
+            if (existingSnippets.length === 0) {
+              onUpdate({ ...settings, snippets: validSnippets });
+            } else {
+              if (window.confirm("추가하시겠습니까?")) {
+                 const snippetMap = new Map();
+                 existingSnippets.forEach(s => snippetMap.set(s.trigger, s));
+                 validSnippets.forEach(s => snippetMap.set(s.trigger, s));
+                 onUpdate({ ...settings, snippets: Array.from(snippetMap.values()) });
+              }
+            }
+          }
         }
-      } catch (error) {
-        console.error("Restore failed:", error);
-        alert("복원 중 오류가 발생했습니다. 파일이 손상되었거나 올바르지 않습니다.");
-      }
+      } catch (err) { alert("파일을 읽는 중 오류가 발생했습니다."); }
     };
     reader.readAsText(file);
-    if (backupFileInputRef.current) backupFileInputRef.current.value = '';
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  const handleReset = () => {
-    if (window.confirm("글꼴, 소리 등 일반 설정을 초기화하시겠습니까?\n\n※ 사용자가 설정한 '페르소나', '단축키', 'API 키'는 삭제되지 않고 유지됩니다.")) {
-      const defaults = getDefaultSettings();
-      
-      const newSettings: AppSettings = {
-        ...defaults,
-        // Preserve user data as requested
-        apiKey: settings.apiKey,
-        snippets: settings.snippets,
-        leftAssistantModel: settings.leftAssistantModel,
-        rightAssistantModel: settings.rightAssistantModel,
-        leftAssistantPersona: settings.leftAssistantPersona,
-        rightAssistantPersona: settings.rightAssistantPersona,
-        enableSaveAsDialog: settings.enableSaveAsDialog, 
-      };
+  const getAssistantConfig = () => {
+    return assistantTabMode === 'left' ? { model: settings.leftAssistantModel || AVAILABLE_MODELS[1].id, persona: settings.leftAssistantPersona } 
+    : { model: settings.rightAssistantModel || AVAILABLE_MODELS[1].id, persona: settings.rightAssistantPersona };
+  };
 
-      onUpdate(newSettings);
-      alert("일반 설정이 초기화되었습니다. (페르소나/단축키 유지됨)");
+  const updateAssistantConfig = (field: string, value: any) => {
+    if (assistantTabMode === 'left') {
+      if (field === 'model') onUpdate({ ...settings, leftAssistantModel: value });
+      else onUpdate({ ...settings, leftAssistantPersona: { ...settings.leftAssistantPersona, [field]: value } });
+    } else {
+      if (field === 'model') onUpdate({ ...settings, rightAssistantModel: value });
+      else onUpdate({ ...settings, rightAssistantPersona: { ...settings.rightAssistantPersona, [field]: value } });
     }
   };
 
-  // Predefined Background Colors
+  const handleKnowledgeFileAdd = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    const readFile = (file: File): Promise<KnowledgeFile> => {
+        return new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const content = event.target?.result as string;
+                resolve({ id: uuidv4(), name: file.name, content: content || '', size: file.size });
+            };
+            reader.readAsText(file);
+        });
+    };
+    const results = await Promise.all(Array.from(files).map(file => readFile(file as File)));
+    const currentFiles = getAssistantConfig().persona?.files || [];
+    updateAssistantConfig('files', [...currentFiles, ...results.filter(f => f.content)]);
+    if (knowledgeFileInputRef.current) knowledgeFileInputRef.current.value = '';
+  };
+
+  const handleFullBackup = () => {
+    try {
+      const docs = localStorage.getItem('novelcraft_docs');
+      const savedSettings = localStorage.getItem('novelcraft_settings');
+      const chatSessions = localStorage.getItem('novelcraft_chat_sessions');
+      const chatSessionsLeft = localStorage.getItem('novelcraft_chat_sessions_left');
+      const backupData = { version: 1, timestamp: new Date().toISOString(), data: { docs: docs ? JSON.parse(docs) : [], settings: savedSettings ? JSON.parse(savedSettings) : {}, chatSessions: chatSessions ? JSON.parse(chatSessions) : [], chatSessionsLeft: chatSessionsLeft ? JSON.parse(chatSessionsLeft) : [] } };
+      const dataStr = JSON.stringify(backupData, null, 2);
+      const blob = new Blob([dataStr], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `novelcraft-backup-${new Date().toISOString().slice(0,10)}.json`;
+      link.click();
+    } catch (error) { alert("백업 실패"); }
+  };
+
+  const handleFullRestore = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!window.confirm("데이터를 복원하시겠습니까?")) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const parsed = JSON.parse(event.target?.result as string);
+        if (parsed.data) {
+          if (parsed.data.docs) localStorage.setItem('novelcraft_docs', JSON.stringify(parsed.data.docs));
+          if (parsed.data.settings) localStorage.setItem('novelcraft_settings', JSON.stringify(parsed.data.settings));
+          if (parsed.data.chatSessions) localStorage.setItem('novelcraft_chat_sessions', JSON.stringify(parsed.data.chatSessions));
+          alert("복원 완료. 새로고침합니다.");
+          window.location.reload();
+        }
+      } catch (error) { alert("복원 오류"); }
+    };
+    reader.readAsText(file);
+  };
+
+  const handleReset = () => {
+    if (window.confirm("초기화하시겠습니까?")) {
+      const defaults = getDefaultSettings();
+      onUpdate({ ...defaults, apiKey: settings.apiKey, snippets: settings.snippets });
+    }
+  };
+
   const BG_PRESETS = [
-    { name: 'Dark (Default)', value: '#09090b' },
-    { name: 'Midnight', value: '#18181b' },
-    { name: 'Charcoal', value: '#27272a' },
-    { name: 'Sepia (Dark)', value: '#1c1917' },
-    { name: 'Paper (Light)', value: '#ffffff' },
+    { name: 'Dark', value: '#09090b' }, { name: 'Midnight', value: '#18181b' }, { name: 'Charcoal', value: '#27272a' }, { name: 'Sepia', value: '#1c1917' }, { name: 'Paper', value: '#ffffff' },
   ];
 
   return (
@@ -385,41 +328,24 @@ const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUpdate })
           </button>
         </div>
 
-        {/* Tabs */}
         <div className="flex border-b border-zinc-800 mb-6 shrink-0">
-          <button
-            onClick={() => setActiveTab('general')}
-            className={`pb-2 px-4 text-sm font-medium transition-colors relative ${
-              activeTab === 'general' ? 'text-blue-400' : 'text-zinc-400 hover:text-zinc-200'
-            }`}
-          >
-            일반 (General)
-            {activeTab === 'general' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-400" />}
-          </button>
-          <button
-            onClick={() => setActiveTab('assistants')}
-            className={`pb-2 px-4 text-sm font-medium transition-colors relative ${
-              activeTab === 'assistants' ? 'text-purple-400' : 'text-zinc-400 hover:text-zinc-200'
-            }`}
-          >
-            AI 어시스턴트 (Assistants)
-            {activeTab === 'assistants' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-purple-400" />}
-          </button>
-          <button
-            onClick={() => setActiveTab('shortcuts')}
-            className={`pb-2 px-4 text-sm font-medium transition-colors relative ${
-              activeTab === 'shortcuts' ? 'text-blue-400' : 'text-zinc-400 hover:text-zinc-200'
-            }`}
-          >
-            단축키 (Shortcuts)
-            {activeTab === 'shortcuts' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-400" />}
-          </button>
+          {['general', 'assistants', 'shortcuts'].map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab as any)}
+              className={`pb-2 px-4 text-sm font-medium transition-colors relative capitalize ${
+                activeTab === tab ? 'text-blue-400' : 'text-zinc-400 hover:text-zinc-200'
+              }`}
+            >
+              {tab === 'general' ? '일반' : tab === 'assistants' ? 'AI 어시스턴트' : '단축키'}
+              {activeTab === tab && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-400" />}
+            </button>
+          ))}
         </div>
 
         <div className="overflow-y-auto flex-1 pr-2">
           {activeTab === 'general' && (
             <div className="space-y-6">
-              {/* API Key Input */}
               <div className="bg-blue-900/10 p-4 rounded-lg border border-blue-900/30">
                 <label className="block mb-2 text-sm font-medium text-zinc-300 flex items-center gap-2">
                   <Key size={16} className="text-blue-400" /> Google API Key
@@ -429,680 +355,138 @@ const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUpdate })
                     type={showApiKey ? "text" : "password"}
                     value={settings.apiKey || ''}
                     onChange={(e) => onUpdate({ ...settings, apiKey: e.target.value })}
-                    placeholder="AI 기능을 사용하려면 API 키를 입력하세요"
+                    placeholder="API 키를 입력하세요"
                     className="w-full p-3 pr-10 rounded border border-zinc-700 bg-zinc-900 text-zinc-200 text-sm focus:outline-none focus:border-blue-500 font-mono"
                   />
-                  <button 
-                    onClick={() => setShowApiKey(!showApiKey)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300"
-                  >
+                  <button onClick={() => setShowApiKey(!showApiKey)} className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300">
                     {showApiKey ? <EyeOff size={16} /> : <Eye size={16} />}
                   </button>
                 </div>
-                <div className="flex items-start justify-between mt-2 gap-2">
-                  <p className="text-xs text-zinc-500">
-                    * 키는 로컬 브라우저에만 저장되며 서버로 전송되지 않습니다.
-                  </p>
-                  <a 
-                    href="https://aistudio.google.com/app/apikey" 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="text-xs text-blue-400 hover:text-blue-300 hover:underline flex items-center gap-1 whitespace-nowrap"
-                  >
-                    API 키 발급받기 <ExternalLink size={10} />
-                  </a>
-                </div>
               </div>
 
-              {/* Editor AI Model */}
               <div>
                 <label className="block mb-2 text-sm font-medium text-zinc-400 flex items-center gap-2">
-                  <Cpu size={16} /> 에디터 AI 모델 (Editor / Revision)
+                  <Cpu size={16} /> 에디터 AI 모델
                 </label>
-                <div className="relative">
-                  <select
-                    value={settings.aiModel || AVAILABLE_MODELS[0].id}
-                    onChange={(e) => onUpdate({ ...settings, aiModel: e.target.value })}
-                    className="w-full p-3 rounded border border-zinc-700 bg-zinc-800 text-zinc-200 text-sm focus:outline-none focus:border-blue-500 appearance-none cursor-pointer"
-                  >
-                    {AVAILABLE_MODELS.map((model) => (
-                      <option key={model.id} value={model.id}>
-                        {model.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                <select
+                  value={settings.aiModel}
+                  onChange={(e) => onUpdate({ ...settings, aiModel: e.target.value })}
+                  className="w-full p-3 rounded border border-zinc-700 bg-zinc-800 text-zinc-200 text-sm appearance-none cursor-pointer"
+                >
+                  {AVAILABLE_MODELS.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+                </select>
               </div>
 
-              <div className="border-t border-zinc-800 my-4"></div>
-
-              {/* Visual & Typography Settings */}
-              <div className="space-y-4">
-                
-                {/* Background Color Picker */}
-                <div>
-                   <label className="block mb-2 text-sm font-medium text-zinc-400 flex items-center gap-2">
-                      <PaintBucket size={16} /> 배경 색상 (Editor Background)
-                   </label>
-                   <div className="flex flex-wrap gap-2 mb-2">
-                      {BG_PRESETS.map((preset) => (
-                         <button
-                            key={preset.value}
-                            onClick={() => onUpdate({ ...settings, editorBackgroundColor: preset.value })}
-                            className={`w-8 h-8 rounded-full border shadow-sm transition-transform hover:scale-110 ${
-                               settings.editorBackgroundColor === preset.value ? 'ring-2 ring-blue-500 ring-offset-2 ring-offset-zinc-900 border-transparent' : 'border-zinc-700'
-                            }`}
-                            style={{ backgroundColor: preset.value }}
-                            title={preset.name}
-                         />
-                      ))}
-                      <div className="relative group">
-                          <input 
-                              type="color" 
-                              value={settings.editorBackgroundColor || '#09090b'}
-                              onChange={(e) => onUpdate({ ...settings, editorBackgroundColor: e.target.value })}
-                              className="w-8 h-8 rounded-full border border-zinc-700 p-0 bg-transparent cursor-pointer overflow-hidden"
-                          />
-                          <div className="absolute inset-0 rounded-full ring-2 ring-blue-500 ring-offset-2 ring-offset-zinc-900 opacity-0 pointer-events-none transition-opacity" 
-                               style={{ opacity: BG_PRESETS.some(p => p.value === settings.editorBackgroundColor) ? 0 : 1 }}
-                          ></div>
+              {/* Cloud Backup Section */}
+              <div className="bg-zinc-800/50 p-4 rounded-lg border border-zinc-800">
+                <label className="block mb-3 text-sm font-bold text-zinc-200 flex items-center gap-2">
+                  <Cloud size={16} className="text-blue-400" /> Google Drive 클라우드 백업
+                </label>
+                <div className="space-y-4">
+                   <p className="text-xs text-zinc-400 leading-relaxed">
+                     데이터를 구글 드라이브에 안전하게 보관하세요. 언제 어디서든 '복원' 기능을 통해 작업을 이어갈 수 있습니다.
+                   </p>
+                   
+                   <div className="flex items-center justify-between p-3 bg-zinc-900 rounded border border-zinc-700">
+                      <div className="flex flex-col">
+                        <span className="text-xs text-zinc-300 font-bold">백업 상태</span>
+                        <span className="text-[10px] text-zinc-500">
+                          {settings.lastCloudBackup ? `${settings.lastCloudBackup}에 마지막 백업` : '백업 기록 없음'}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                         {driveStatus === 'success' && <CheckCircle2 size={16} className="text-green-500" />}
+                         {driveStatus === 'error' && <AlertTriangle size={16} className="text-red-500" />}
                       </div>
                    </div>
-                   <p className="text-[10px] text-zinc-500">
-                      * 배경 밝기에 따라 글자 색상(흰색/검은색)이 자동으로 조절됩니다.
+
+                   <button 
+                     onClick={handleGoogleDriveBackup}
+                     disabled={isDriveLoading}
+                     className={`w-full flex items-center justify-center gap-2 py-3 rounded-lg font-bold text-sm transition-all active:scale-95 ${
+                       isDriveLoading 
+                       ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed' 
+                       : 'bg-white hover:bg-zinc-100 text-zinc-900 shadow-lg'
+                     }`}
+                   >
+                     {isDriveLoading ? (
+                       <Loader2 size={16} className="animate-spin" />
+                     ) : (
+                       <Cloud size={16} />
+                     )}
+                     구글 드라이브에 백업 (자동 저장)
+                   </button>
+                   
+                   <p className="text-[10px] text-zinc-500 text-center italic">
+                     * 드라이브의 'novelcraft-backup.json' 파일을 생성하거나 업데이트합니다.
                    </p>
                 </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                   {/* Font Type */}
-                    <div>
-                      <label className="block mb-2 text-sm font-medium text-zinc-400">글꼴 (Font Family)</label>
-                      <div className="flex flex-col gap-2">
-                        <button
-                          onClick={() => onUpdate({ ...settings, fontType: FontType.SERIF })}
-                          className={`p-3 rounded border text-sm font-serif ${
-                            settings.fontType === FontType.SERIF
-                              ? 'border-blue-500 bg-blue-900/20 text-blue-100'
-                              : 'border-zinc-700 bg-zinc-800 text-zinc-400 hover:bg-zinc-750'
-                          }`}
-                        >
-                          명조체 (Serif)
-                        </button>
-                        <button
-                          onClick={() => onUpdate({ ...settings, fontType: FontType.SANS })}
-                          className={`p-3 rounded border text-sm font-sans ${
-                            settings.fontType === FontType.SANS
-                              ? 'border-blue-500 bg-blue-900/20 text-blue-100'
-                              : 'border-zinc-700 bg-zinc-800 text-zinc-400 hover:bg-zinc-750'
-                          }`}
-                        >
-                          고딕체 (Sans)
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Paragraph Settings */}
-                    <div>
-                      <label className="block mb-2 text-sm font-medium text-zinc-400">문단 설정</label>
-                      <div className="flex flex-col gap-2">
-                         <div className="flex gap-2">
-                            <button
-                              onClick={() => onUpdate({ ...settings, alignment: 'justify' })}
-                              className={`flex-1 p-3 rounded border text-sm flex items-center justify-center gap-2 ${
-                                settings.alignment === 'justify'
-                                  ? 'border-blue-500 bg-blue-900/20 text-blue-100'
-                                  : 'border-zinc-700 bg-zinc-800 text-zinc-400 hover:bg-zinc-750'
-                              }`}
-                              title="양쪽 정렬"
-                            >
-                              <AlignJustify size={16} />
-                            </button>
-                            <button
-                              onClick={() => onUpdate({ ...settings, alignment: 'left' })}
-                              className={`flex-1 p-3 rounded border text-sm flex items-center justify-center gap-2 ${
-                                settings.alignment === 'left'
-                                  ? 'border-blue-500 bg-blue-900/20 text-blue-100'
-                                  : 'border-zinc-700 bg-zinc-800 text-zinc-400 hover:bg-zinc-750'
-                              }`}
-                              title="왼쪽 정렬"
-                            >
-                              <AlignLeft size={16} />
-                            </button>
-                         </div>
-                        <button
-                          onClick={() => onUpdate({ ...settings, enableIndentation: !settings.enableIndentation })}
-                          className={`w-full p-3 rounded border text-sm flex items-center justify-center gap-2 transition-colors ${
-                            settings.enableIndentation
-                              ? 'border-blue-500 bg-blue-900/20 text-blue-100'
-                              : 'border-zinc-700 bg-zinc-800 text-zinc-400 hover:bg-zinc-750'
-                          }`}
-                        >
-                          <Indent size={16} />
-                          {settings.enableIndentation ? '들여쓰기 ON' : '들여쓰기 OFF'}
-                        </button>
-                      </div>
-                    </div>
-                </div>
-
-                {/* Font Size */}
-                <div>
-                  <label className="block mb-2 text-sm font-medium text-zinc-400">
-                    글자 크기 (Editor Font Size): {settings.fontSize}px
-                  </label>
-                  <input
-                    type="range"
-                    min="12"
-                    max="32"
-                    step="1"
-                    value={settings.fontSize}
-                    onChange={(e) => onUpdate({ ...settings, fontSize: parseInt(e.target.value) })}
-                    className="w-full h-2 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
-                  />
-                  <div className="flex justify-between mt-1 text-xs text-zinc-500">
-                    <span>12px</span>
-                    <span>32px</span>
-                  </div>
-                </div>
-
-                 {/* Assistant Font Size */}
-                 <div>
-                  <label className="block mb-2 text-sm font-medium text-zinc-400">
-                    어시스턴트 글자 크기 (Assistant Font Size): {settings.assistantFontSize || 14}px
-                  </label>
-                  <input
-                    type="range"
-                    min="12"
-                    max="24"
-                    step="1"
-                    value={settings.assistantFontSize || 14}
-                    onChange={(e) => onUpdate({ ...settings, assistantFontSize: parseInt(e.target.value) })}
-                    className="w-full h-2 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-purple-500"
-                  />
-                  <div className="flex justify-between mt-1 text-xs text-zinc-500">
-                    <span>12px</span>
-                    <span>24px</span>
-                  </div>
-                </div>
-
-                {/* Sound Volume */}
-                <div>
-                  <label className="block mb-2 text-sm font-medium text-zinc-400 flex items-center gap-2">
-                    <Volume2 size={16} /> 알림음 크기 (Sound Volume): {Math.round((settings.soundVolume ?? 0.5) * 100)}%
-                  </label>
-                  <input
-                    type="range"
-                    min="0"
-                    max="3"
-                    step="0.1"
-                    value={settings.soundVolume ?? 0.5}
-                    onChange={(e) => onUpdate({ ...settings, soundVolume: parseFloat(e.target.value) })}
-                    className="w-full h-2 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-green-500"
-                  />
-                  <div className="flex justify-between mt-1 text-xs text-zinc-500">
-                    <span>Mute</span>
-                    <span>300%</span>
-                  </div>
-                </div>
               </div>
-              
-              <div className="border-t border-zinc-800 my-4"></div>
 
-              {/* Export Settings */}
-              <div>
+              <div className="mt-6 border-t border-zinc-800 pt-6">
                 <label className="block mb-3 text-sm font-medium text-zinc-400 flex items-center gap-2">
-                  <Download size={16} /> 파일 내보내기 설정 (File Export)
+                  <Database size={16} /> 로컬 데이터 관리
                 </label>
-                <div className="p-4 bg-zinc-800/30 border border-zinc-800 rounded-lg">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm text-zinc-200 font-medium mb-1">저장 위치 선택 대화상자 사용</p>
-                      <p className="text-xs text-zinc-500">
-                        켜짐: 저장할 때마다 폴더를 직접 지정합니다.<br/>
-                        꺼짐: 브라우저 기본 다운로드 폴더에 자동 저장됩니다.
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => onUpdate({ ...settings, enableSaveAsDialog: !settings.enableSaveAsDialog })}
-                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                        settings.enableSaveAsDialog ? 'bg-blue-600' : 'bg-zinc-700'
-                      }`}
-                    >
-                      <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                        settings.enableSaveAsDialog ? 'translate-x-6' : 'translate-x-1'
-                      }`} />
-                    </button>
-                  </div>
-                  <p className="text-[10px] text-zinc-600 mt-3 pt-3 border-t border-zinc-700/50">
-                    * 브라우저 보안 정책상 특정 경로(예: C:\MyNovel)를 고정할 수 없습니다. 대신 이 옵션을 사용하여 저장 시마다 원하는 폴더를 선택하세요.
-                  </p>
-                </div>
-              </div>
-
-              {/* Data Management Section */}
-              <div className="mt-6">
-                <label className="block mb-3 text-sm font-medium text-zinc-400 flex items-center gap-2">
-                  <Database size={16} /> 데이터 관리 (Data Management)
-                </label>
-                <div className="p-4 bg-zinc-800/30 border border-zinc-800 rounded-lg space-y-3">
-                  <p className="text-xs text-zinc-500 mb-2 leading-relaxed">
-                    본 앱은 서버가 아닌 <strong>브라우저 저장소</strong>에 데이터를 저장합니다. 
-                    다른 컴퓨터나 브라우저에서 작업하려면 백업 파일을 내보내어 이동하세요.
-                  </p>
-                  <div className="grid grid-cols-2 gap-3">
-                    <button 
-                      onClick={handleFullBackup}
-                      className="flex items-center justify-center gap-2 px-3 py-2.5 bg-zinc-700 hover:bg-zinc-600 text-zinc-200 rounded-lg border border-zinc-600 text-xs font-bold transition-all active:scale-95 shadow-sm"
-                    >
-                      <Save size={14} /> 전체 백업 (.json)
-                    </button>
-                    <button 
-                      onClick={() => backupFileInputRef.current?.click()}
-                      className="flex items-center justify-center gap-2 px-3 py-2.5 bg-green-900/30 hover:bg-green-900/50 text-green-200 rounded-lg border border-green-800/50 text-xs font-bold transition-all active:scale-95 shadow-sm"
-                    >
-                      <FolderUp size={14} /> 데이터 복원
-                    </button>
-                    <input 
-                      type="file" 
-                      ref={backupFileInputRef} 
-                      onChange={handleFullRestore} 
-                      className="hidden" 
-                      accept=".json" 
-                    />
-                  </div>
-                </div>
-              </div>
-
-            </div>
-          )}
-
-          {/* ... (Assistants and Shortcuts tabs remain unchanged) ... */}
-          {activeTab === 'assistants' && (
-            <div className="space-y-6">
-              {/* Toggle for Left/Right */}
-              <div className="flex bg-zinc-950 p-1 rounded-lg border border-zinc-800">
-                <button 
-                  onClick={() => setAssistantTabMode('left')}
-                  className={`flex-1 flex items-center justify-center gap-2 py-2 text-sm font-medium rounded-md transition-all ${
-                    assistantTabMode === 'left' ? 'bg-zinc-800 text-purple-400 shadow-sm' : 'text-zinc-500 hover:text-zinc-300'
-                  }`}
-                >
-                  <PanelLeft size={16} /> 왼쪽 패널 설정
-                </button>
-                <button 
-                  onClick={() => setAssistantTabMode('right')}
-                  className={`flex-1 flex items-center justify-center gap-2 py-2 text-sm font-medium rounded-md transition-all ${
-                    assistantTabMode === 'right' ? 'bg-zinc-800 text-purple-400 shadow-sm' : 'text-zinc-500 hover:text-zinc-300'
-                  }`}
-                >
-                  <PanelRight size={16} /> 오른쪽 패널 설정
-                </button>
-              </div>
-
-              <div className="bg-zinc-800/30 rounded-lg p-5 border border-zinc-800">
-                <h3 className="text-sm font-bold text-zinc-200 mb-4 flex items-center gap-2">
-                  <Bot size={16} className="text-purple-400" />
-                  {assistantTabMode === 'left' ? '왼쪽 어시스턴트 구성' : '오른쪽 어시스턴트 구성'}
-                </h3>
-
-                {/* Model Selection */}
-                <div className="mb-5">
-                   <label className="block mb-2 text-xs font-bold text-zinc-400 uppercase tracking-wider">AI 모델 선택</label>
-                   <div className="relative">
-                      <select
-                        value={getAssistantConfig().model}
-                        onChange={(e) => updateAssistantConfig('model', e.target.value)}
-                        className="w-full p-3 rounded border border-zinc-700 bg-zinc-900 text-zinc-200 text-sm focus:outline-none focus:border-purple-500 appearance-none cursor-pointer"
-                      >
-                        {AVAILABLE_MODELS.map((model) => (
-                          <option key={model.id} value={model.id}>
-                            {model.name}
-                          </option>
-                        ))}
-                      </select>
-                   </div>
-                   <p className="text-[10px] text-zinc-500 mt-1">* 빠르고 가벼운 대화에는 'Flash', 복잡한 추론에는 'Pro' 모델을 추천합니다.</p>
-                </div>
-
-                {/* Persona Settings */}
-                <div className="space-y-4 pt-4 border-t border-zinc-700/50">
-                  <h4 className="text-sm font-bold text-zinc-300 flex items-center gap-2">
-                    <UserCircle size={16} /> 페르소나 (Persona) 설정
-                  </h4>
-                  
-                  {/* Name */}
-                  <div>
-                    <label className="block mb-1 text-xs text-zinc-400">이름 (Name)</label>
-                    <input 
-                      type="text" 
-                      value={getAssistantConfig().persona?.name || ''}
-                      onChange={(e) => updateAssistantConfig('name', e.target.value)}
-                      placeholder="예: 설정 오류 탐지봇, 아이디어 뱅크"
-                      className="w-full p-2 rounded border border-zinc-700 bg-zinc-900 text-zinc-200 text-sm focus:outline-none focus:border-purple-500"
-                    />
-                  </div>
-
-                  {/* System Instruction */}
-                  <div>
-                    <label className="block mb-1 text-xs text-zinc-400 flex items-center justify-between">
-                      <span>역할 및 지침 (System Instruction)</span>
-                      <PenTool size={12} />
-                    </label>
-                    <textarea 
-                      value={getAssistantConfig().persona?.instruction || ''}
-                      onChange={(e) => updateAssistantConfig('instruction', e.target.value)}
-                      placeholder="AI에게 부여할 역할과 행동 지침을 입력하세요.&#13;&#10;예: 당신은 까칠하지만 유능한 웹소설 PD입니다. 독자의 흥미를 끄는 요소를 중심으로 피드백해주세요."
-                      className="w-full p-2 rounded border border-zinc-700 bg-zinc-900 text-zinc-300 text-sm focus:outline-none focus:border-purple-500 min-h-[100px] leading-relaxed resize-none"
-                    />
-                  </div>
-
-                  {/* Knowledge Base (Text) */}
-                  <div>
-                     <label className="block mb-1 text-xs text-zinc-400">
-                        기본 지식 / 텍스트 (Knowledge Text)
-                     </label>
-                    <textarea 
-                      value={getAssistantConfig().persona?.knowledge || ''}
-                      onChange={(e) => updateAssistantConfig('knowledge', e.target.value)}
-                      placeholder="간단한 메모나 텍스트 설정은 여기에 입력하세요."
-                      className="w-full p-2 rounded border border-zinc-700 bg-zinc-900 text-zinc-300 text-sm focus:outline-none focus:border-purple-500 min-h-[80px] leading-relaxed resize-none font-mono text-xs mb-3"
-                    />
-                  </div>
-
-                  {/* Knowledge Base (Files) */}
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <label className="text-xs text-zinc-400 flex items-center gap-1">
-                        <span>참조 파일 목록 (Attached Knowledge Files)</span>
-                        <BookOpen size={12} />
-                      </label>
-                      <div className="flex items-center gap-2">
-                        {(getAssistantConfig().persona?.files || []).length > 0 && (
-                            <button 
-                              onClick={removeAllKnowledgeFiles}
-                              className="text-[10px] flex items-center gap-1 px-2 py-1 bg-zinc-800 hover:bg-red-900/20 text-zinc-400 hover:text-red-300 rounded border border-zinc-700 hover:border-red-900/50 transition-colors"
-                              title="목록 비우기"
-                            >
-                              <Trash2 size={10} />
-                              초기화
-                            </button>
-                        )}
-                        <button 
-                          onClick={() => knowledgeFileInputRef.current?.click()}
-                          className="text-[10px] flex items-center gap-1 px-2 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded border border-zinc-700 transition-colors"
-                        >
-                          <FileUp size={10} />
-                          파일 추가하기
-                        </button>
-                      </div>
-                      <input 
-                        type="file" 
-                        ref={knowledgeFileInputRef}
-                        onChange={handleKnowledgeFileAdd}
-                        className="hidden" 
-                        accept=".txt,.md,.csv,.json,.jsonl" 
-                        multiple 
-                      />
-                    </div>
-                    
-                    <div className="space-y-2">
-                      {(getAssistantConfig().persona?.files || []).map((file) => (
-                         <div key={file.id} className="flex items-center justify-between p-2 rounded bg-zinc-900 border border-zinc-700">
-                            <div className="flex items-center gap-2 overflow-hidden">
-                               <div className="w-6 h-6 rounded bg-zinc-800 flex items-center justify-center shrink-0 text-zinc-500">
-                                  <FileText size={12} />
-                               </div>
-                               <div className="flex flex-col min-w-0">
-                                  <div className="flex items-center gap-2">
-                                     <span className="text-xs text-zinc-300 truncate font-medium">{file.name}</span>
-                                     {(file.size > 20000) && (
-                                       <span className="text-[10px] text-blue-400 flex items-center gap-0.5 bg-blue-900/20 px-1 rounded border border-blue-900/50" title="파일이 큽니다. AI가 질문에 맞는 내용만 찾아 답변합니다. (스마트 발췌 모드)">
-                                         <CheckCircle2 size={8} /> 스마트 발췌 (토큰 절약)
-                                       </span>
-                                     )}
-                                  </div>
-                                  <span className="text-[10px] text-zinc-500">{(file.size / 1024).toFixed(1)} KB</span>
-                               </div>
-                            </div>
-                            <button 
-                               onClick={() => removeKnowledgeFile(file.id)}
-                               className="p-1 text-zinc-500 hover:text-red-400 hover:bg-zinc-800 rounded transition-colors"
-                            >
-                               <Trash2 size={12} />
-                            </button>
-                         </div>
-                      ))}
-                      {(getAssistantConfig().persona?.files || []).length === 0 && (
-                         <div className="text-center py-4 bg-zinc-900/50 border border-dashed border-zinc-800 rounded text-zinc-600 text-xs">
-                            등록된 참조 파일이 없습니다.
-                         </div>
-                      )}
-                    </div>
-                    <p className="text-[10px] text-zinc-500 mt-2">* 텍스트(.txt, .md, .csv) 파일만 지원합니다.</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-          {/* ... (Rest of the file unchanged) ... */}
-          {activeTab === 'shortcuts' && (
-            <div className="space-y-6">
-              {/* Import/Export Actions */}
-              <div className="grid grid-cols-2 gap-3">
-                <button 
-                  onClick={handleExportSnippets}
-                  className="flex items-center justify-center gap-2 px-3 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg border border-zinc-700 text-xs font-bold transition-all active:scale-95 shadow-sm"
-                >
-                  <Download size={14} /> 목록 내보내기
-                </button>
-                <button 
-                  onClick={handleImportClick}
-                  className="flex items-center justify-center gap-2 px-3 py-2.5 bg-blue-900/30 hover:bg-blue-900/50 text-blue-200 rounded-lg border border-blue-800/50 text-xs font-bold transition-all active:scale-95 shadow-sm"
-                >
-                  <Upload size={14} /> 목록 불러오기
-                </button>
-              </div>
-              
-              <div className="bg-zinc-800/50 p-4 rounded-lg border border-zinc-800">
-                <h3 className="text-sm font-bold text-zinc-200 mb-3 flex items-center gap-2">
-                  <Plus size={16} /> 새 단축키 추가
-                </h3>
-                
-                <div className="space-y-3">
-                  {/* Trigger Input */}
-                  <div>
-                    <label className="block text-xs text-zinc-500 mb-1">단축키 (Trigger Key)</label>
-                    <button
-                      onClick={() => { setIsRecording(true); setNewTrigger(''); }}
-                      className={`w-full p-2 rounded border text-left text-sm flex items-center gap-2 ${
-                        isRecording 
-                          ? 'border-blue-500 bg-blue-900/20 text-blue-200 animate-pulse' 
-                          : 'border-zinc-700 bg-zinc-900 text-zinc-300 hover:border-zinc-600'
-                      }`}
-                    >
-                      {isRecording ? (
-                        <>
-                          <Keyboard size={16} /> 키를 입력하세요...
-                        </>
-                      ) : (
-                        <>
-                          <Command size={16} /> {newTrigger || '클릭하여 키 설정'}
-                        </>
-                      )}
-                    </button>
-                    
-                    {isRecording && (
-                       <input 
-                         type="text" 
-                         className="opacity-0 absolute h-0 w-0" 
-                         autoFocus 
-                         onBlur={() => setIsRecording(false)}
-                         onKeyDown={handleKeyDownCapture}
-                       />
-                    )}
-                  </div>
-
-                  {/* Type Selector */}
-                  <div>
-                    <label className="block text-xs text-zinc-500 mb-1">기능 유형 (Action Type)</label>
-                    <div className="flex gap-2 bg-zinc-900 p-1 rounded border border-zinc-700">
-                      <button
-                        onClick={() => { setNewSnippetType(SnippetType.TEXT); setNewSnippetValue(''); }}
-                        className={`flex-1 py-1.5 text-xs rounded transition-colors flex items-center justify-center gap-1 ${
-                          newSnippetType === SnippetType.TEXT ? 'bg-zinc-700 text-white' : 'text-zinc-400 hover:text-zinc-200'
-                        }`}
-                      >
-                        <Type size={12} /> 텍스트
-                      </button>
-                      <button
-                        onClick={() => { setNewSnippetType(SnippetType.COLOR); setNewSnippetValue('#60a5fa'); }}
-                        className={`flex-1 py-1.5 text-xs rounded transition-colors flex items-center justify-center gap-1 ${
-                          newSnippetType === SnippetType.COLOR ? 'bg-zinc-700 text-white' : 'text-zinc-400 hover:text-zinc-200'
-                        }`}
-                      >
-                        <Palette size={12} /> 색상
-                      </button>
-                      <button
-                        onClick={() => { setNewSnippetType(SnippetType.AI_COMMAND); setNewSnippetValue(AIRevisionMode.GRAMMAR); }}
-                        className={`flex-1 py-1.5 text-xs rounded transition-colors flex items-center justify-center gap-1 ${
-                          newSnippetType === SnippetType.AI_COMMAND ? 'bg-zinc-700 text-white' : 'text-zinc-400 hover:text-zinc-200'
-                        }`}
-                      >
-                        <Wand2 size={12} /> AI 교정
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Value Input */}
-                  <div>
-                    {newSnippetType === SnippetType.TEXT && (
-                      <>
-                        <div className="flex justify-between items-center mb-1">
-                          <label className="block text-xs text-zinc-500">삽입할 텍스트</label>
-                          <button 
-                            onClick={insertCursorMarker}
-                            className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1 bg-blue-900/30 px-2 py-0.5 rounded border border-blue-800/50"
-                          >
-                            <Type size={10} /> 커서 위치 {"{|}"} 삽입
-                          </button>
-                        </div>
-                        <textarea
-                          value={newSnippetValue}
-                          onChange={(e) => setNewSnippetValue(e.target.value)}
-                          placeholder='예: "말하기" {|}'
-                          className="w-full p-2 rounded border border-zinc-700 bg-zinc-900 text-zinc-300 text-sm focus:outline-none focus:border-blue-500 min-h-[60px]"
-                        />
-                      </>
-                    )}
-                    
-                    {newSnippetType === SnippetType.COLOR && (
-                      <>
-                        <label className="block text-xs text-zinc-500 mb-1">변경할 색상</label>
-                        <div className="flex items-center gap-3 p-2 bg-zinc-900 rounded border border-zinc-700">
-                          <input
-                            type="color"
-                            value={newSnippetValue}
-                            onChange={(e) => setNewSnippetValue(e.target.value)}
-                            className="h-8 w-12 bg-transparent cursor-pointer"
-                          />
-                          <span className="text-sm text-zinc-300 font-mono">{newSnippetValue}</span>
-                        </div>
-                      </>
-                    )}
-
-                    {newSnippetType === SnippetType.AI_COMMAND && (
-                       <>
-                        <label className="block text-xs text-zinc-500 mb-1">실행할 AI 모드</label>
-                        <select
-                          value={newSnippetValue}
-                          onChange={(e) => setNewSnippetValue(e.target.value)}
-                          className="w-full p-2 rounded border border-zinc-700 bg-zinc-900 text-zinc-300 text-sm focus:outline-none focus:border-blue-500 cursor-pointer"
-                        >
-                          {Object.entries(AI_MODE_LABELS).map(([value, label]) => (
-                            <option key={value} value={value}>
-                              {label}
-                            </option>
-                          ))}
-                        </select>
-                       </>
-                    )}
-                  </div>
-
-                  <button
-                    onClick={addSnippet}
-                    disabled={!newTrigger || !newSnippetValue}
-                    className="w-full py-2 text-sm font-bold text-zinc-900 bg-blue-500 rounded hover:bg-blue-400 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    추가하기
+                <div className="grid grid-cols-2 gap-3">
+                  <button onClick={handleFullBackup} className="flex items-center justify-center gap-2 px-3 py-2.5 bg-zinc-700 hover:bg-zinc-600 text-zinc-200 rounded-lg text-xs font-bold">
+                    <Save size={14} /> 수동 다운로드
+                  </button>
+                  <button onClick={() => backupFileInputRef.current?.click()} className="flex items-center justify-center gap-2 px-3 py-2.5 bg-green-900/30 hover:bg-green-900/50 text-green-200 rounded-lg border border-green-800/50 text-xs font-bold">
+                    <FolderUp size={14} /> 데이터 복원
                   </button>
                 </div>
+                <input type="file" ref={backupFileInputRef} onChange={handleFullRestore} className="hidden" accept=".json" />
               </div>
+            </div>
+          )}
 
-              <div>
-                <h3 className="text-sm font-bold text-zinc-400 mb-3">등록된 단축키 목록</h3>
-                <div className="space-y-2">
-                  {(settings.snippets || []).map((snippet) => (
-                    <div key={snippet.id} className="flex items-start gap-3 p-3 rounded bg-zinc-800 border border-zinc-700 group">
-                      <div className="shrink-0 px-2 py-1 bg-zinc-700 rounded text-xs font-mono text-blue-300 border border-zinc-600 min-w-[60px] text-center mt-0.5">
-                        {snippet.trigger}
-                      </div>
-                      <div className="flex-1 text-sm text-zinc-300 flex items-center gap-2">
-                        {snippet.type === SnippetType.COLOR ? (
-                          <div className="flex items-center gap-2">
-                            <span className="w-4 h-4 rounded-full border border-zinc-600" style={{ backgroundColor: snippet.text }}></span>
-                            <span className="text-zinc-400 text-xs">색상 변경 ({snippet.text})</span>
-                          </div>
-                        ) : snippet.type === SnippetType.AI_COMMAND ? (
-                          <div className="flex items-center gap-2">
-                             <Wand2 size={12} className="text-purple-400" />
-                             <span className="text-purple-300 font-medium">{AI_MODE_LABELS[snippet.text] || snippet.text}</span>
-                             <span className="text-zinc-500 text-xs">(AI 교정)</span>
-                          </div>
-                        ) : (
-                          <span className="whitespace-pre-wrap break-all">{snippet.text}</span>
-                        )}
-                      </div>
-                      <button
-                        onClick={() => removeSnippet(snippet.id)}
-                        className="text-zinc-500 hover:text-red-400 p-1 opacity-0 group-hover:opacity-100 transition-opacity"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  ))}
-                  
-                  {(settings.snippets || []).length === 0 && (
-                    <p className="text-center text-zinc-600 text-xs py-4">
-                      등록된 단축키가 없습니다.
-                    </p>
-                  )}
+          {activeTab === 'assistants' && (
+            <div className="space-y-6">
+              <div className="flex bg-zinc-950 p-1 rounded-lg border border-zinc-800">
+                <button onClick={() => setAssistantTabMode('left')} className={`flex-1 flex items-center justify-center gap-2 py-2 text-sm font-medium rounded-md ${assistantTabMode === 'left' ? 'bg-zinc-800 text-purple-400 shadow-sm' : 'text-zinc-500'}`}>
+                  <PanelLeft size={16} /> 왼쪽 패널
+                </button>
+                <button onClick={() => setAssistantTabMode('right')} className={`flex-1 flex items-center justify-center gap-2 py-2 text-sm font-medium rounded-md ${assistantTabMode === 'right' ? 'bg-zinc-800 text-purple-400 shadow-sm' : 'text-zinc-500'}`}>
+                  <PanelRight size={16} /> 오른쪽 패널
+                </button>
+              </div>
+              <div className="bg-zinc-800/30 rounded-lg p-5 border border-zinc-800">
+                <div className="mb-5">
+                   <label className="block mb-2 text-xs font-bold text-zinc-400 uppercase">AI 모델</label>
+                   <select value={getAssistantConfig().model} onChange={(e) => updateAssistantConfig('model', e.target.value)} className="w-full p-3 rounded border border-zinc-700 bg-zinc-900 text-zinc-200 text-sm">
+                     {AVAILABLE_MODELS.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+                   </select>
                 </div>
+                <div className="space-y-4 pt-4 border-t border-zinc-700/50">
+                  <input type="text" value={getAssistantConfig().persona?.name || ''} onChange={(e) => updateAssistantConfig('name', e.target.value)} placeholder="페르소나 이름" className="w-full p-2 rounded border border-zinc-700 bg-zinc-900 text-zinc-200 text-sm" />
+                  <textarea value={getAssistantConfig().persona?.instruction || ''} onChange={(e) => updateAssistantConfig('instruction', e.target.value)} placeholder="행동 지침" className="w-full p-2 rounded border border-zinc-700 bg-zinc-900 text-zinc-300 text-sm min-h-[100px]" />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'shortcuts' && (
+            <div className="space-y-6">
+              <div className="grid grid-cols-2 gap-3">
+                <button onClick={handleExportSnippets} className="px-3 py-2.5 bg-zinc-800 text-zinc-300 rounded-lg border border-zinc-700 text-xs font-bold">내보내기</button>
+                <button onClick={handleImportClick} className="px-3 py-2.5 bg-blue-900/30 text-blue-200 rounded-lg border border-blue-800/50 text-xs font-bold">불러오기</button>
+              </div>
+              <div className="bg-zinc-800/50 p-4 rounded-lg border border-zinc-800">
+                <button onClick={() => setIsRecording(true)} className={`w-full p-2 rounded border text-left text-sm ${isRecording ? 'border-blue-500 bg-blue-900/20' : 'bg-zinc-900 text-zinc-300'}`}>
+                  {isRecording ? '키 입력 중...' : newTrigger || '클릭하여 키 설정'}
+                </button>
+                {isRecording && <input type="text" className="opacity-0 absolute h-0 w-0" autoFocus onBlur={() => setIsRecording(false)} onKeyDown={handleKeyDownCapture} />}
+                <button onClick={addSnippet} className="w-full py-2 mt-3 font-bold text-zinc-900 bg-blue-500 rounded">추가</button>
               </div>
             </div>
           )}
         </div>
 
         <div className="mt-6 pt-4 border-t border-zinc-800 flex justify-between shrink-0">
-          <button
-            onClick={handleReset}
-            className="px-4 py-2 text-sm font-medium text-red-400 hover:text-red-300 hover:bg-red-900/20 rounded flex items-center gap-2 transition-colors"
-          >
-            <RotateCcw size={16} /> 설정 초기화 (Reset)
-          </button>
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-sm font-medium text-zinc-900 bg-zinc-100 rounded hover:bg-zinc-200"
-          >
-            완료 (Done)
-          </button>
+          <button onClick={handleReset} className="text-sm font-medium text-red-400 hover:text-red-300">초기화</button>
+          <button onClick={onClose} className="px-4 py-2 text-sm font-medium text-zinc-900 bg-zinc-100 rounded">완료</button>
         </div>
-
-        <input 
-          type="file" 
-          ref={fileInputRef} 
-          className="hidden" 
-          accept=".json" 
-          onChange={handleFileChange}
-        />
+        <input type="file" ref={fileInputRef} className="hidden" accept=".json" onChange={handleFileChange} />
       </div>
     </div>
   );
